@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: qa-platform-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: qa_platform
+      POSTGRES_PASSWORD: qa_platform_dev_password
+      POSTGRES_DB: qa_intelligence_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - qa_platform_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qa_platform -d qa_intelligence_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  qa_platform_postgres_data:

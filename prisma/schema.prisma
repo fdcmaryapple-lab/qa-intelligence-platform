@@ -1,0 +1,149 @@
+// QA Intelligence Platform — Prisma schema
+//
+// Phase 1 scope: only the identity/workspace core (User, Project,
+// ProjectMember) plus AuditLog, since audit logging hooks into every
+// later mutation. Requirement/TestCase/AI/etc. models arrive in their
+// respective phases per the roadmap — see the architecture doc for the
+// full intended ERD.
+//
+// Design notes:
+//  - IDs are cuid() strings: URL-safe, sortable-ish, no leaking sequential
+//    row counts the way auto-increment ints do.
+//  - Timestamps: createdAt/updatedAt on every mutable table.
+//  - Soft-delete is intentionally NOT used yet — deletions are hard until
+//    a real compliance/retention requirement justifies the complexity.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// A person who can sign in to the platform.
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  passwordHash  String?
+  image         String?
+  /// Platform-wide role, independent of per-project roles (ProjectMember.role).
+  platformRole  PlatformRole @default(MEMBER)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  memberships   ProjectMember[]
+  auditLogs     AuditLog[]
+  requirements  Requirement[]
+
+  @@map("users")
+}
+
+enum PlatformRole {
+  MEMBER
+  PLATFORM_ADMIN
+}
+
+/// A QA workspace. All domain data (requirements, test cases, runs, ...)
+/// is scoped to a Project.
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members     ProjectMember[]
+  auditLogs   AuditLog[]
+  requirements Requirement[]
+
+  @@index([slug])
+  @@map("projects")
+}
+
+/// Join table between User and Project, carrying the user's role within
+/// that specific project. This is the single source of truth authorization
+/// checks (requireProjectAccess) query against.
+model ProjectMember {
+  id        String      @id @default(cuid())
+  userId    String
+  projectId String
+  role      ProjectRole @default(VIEWER)
+  createdAt DateTime    @default(now())
+
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@index([projectId])
+  @@map("project_members")
+}
+
+enum ProjectRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+/// Append-only audit trail. `targetType`/`targetId` are a polymorphic
+/// reference (e.g. targetType="Requirement", targetId="<cuid>") rather than
+/// a foreign key per entity type, since this table must survive and remain
+/// queryable regardless of how many domain tables get added over time.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  targetType String
+  targetId   String
+  /// Structured before/after or metadata payload for this action.
+  metadata   Json?
+  projectId  String?
+  createdAt  DateTime @default(now())
+
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  project    Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([targetType, targetId])
+  @@map("audit_logs")
+}
+
+/// Phase 2: a requirement belonging to a Project. RequirementAnalysis
+/// (AI-generated) and TestCase (traced back to the requirement it covers)
+/// attach here in later phases — this model is intentionally the anchor
+/// point both hang off of.
+model Requirement {
+  id          String              @id @default(cuid())
+  projectId   String
+  title       String
+  description String?
+  status      RequirementStatus   @default(DRAFT)
+  priority    RequirementPriority @default(MEDIUM)
+  createdById String
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User    @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([projectId, status])
+  @@map("requirements")
+}
+
+enum RequirementStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum RequirementPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}

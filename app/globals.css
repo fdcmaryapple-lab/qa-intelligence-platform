@@ -1,0 +1,115 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Design token system — QA Intelligence Platform
+  ------------------------------------------------
+  The palette is built around the product's own vocabulary: every test
+  produces a pass, a fail, or a warning, so "signal-pass / signal-fail /
+  signal-warn" are first-class tokens, not afterthought status colors.
+  Primary is a confident, precise indigo-blue rather than the more common
+  cream+terracotta or near-black+neon-green defaults — meant to read as
+  "engineering instrument," not "marketing site."
+*/
+
+@layer base {
+  :root {
+    --background: 120 8% 97%;
+    --foreground: 222 20% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 20% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 20% 12%;
+
+    --primary: 231 63% 52%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 14% 93%;
+    --secondary-foreground: 222 20% 15%;
+
+    --muted: 220 14% 93%;
+    --muted-foreground: 222 10% 40%;
+
+    --accent: 220 14% 90%;
+    --accent-foreground: 222 20% 15%;
+
+    --destructive: 9 63% 47%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 87%;
+    --input: 220 13% 87%;
+    --ring: 231 63% 52%;
+
+    --signal-pass: 154 65% 29%;
+    --signal-pass-foreground: 0 0% 100%;
+    --signal-fail: 9 63% 47%;
+    --signal-fail-foreground: 0 0% 100%;
+    --signal-warn: 38 62% 40%;
+    --signal-warn-foreground: 0 0% 100%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222 22% 9%;
+    --foreground: 210 15% 92%;
+
+    --card: 222 20% 12%;
+    --card-foreground: 210 15% 92%;
+
+    --popover: 222 20% 12%;
+    --popover-foreground: 210 15% 92%;
+
+    --primary: 231 70% 66%;
+    --primary-foreground: 222 30% 10%;
+
+    --secondary: 222 16% 18%;
+    --secondary-foreground: 210 15% 92%;
+
+    --muted: 222 16% 18%;
+    --muted-foreground: 220 10% 65%;
+
+    --accent: 222 16% 20%;
+    --accent-foreground: 210 15% 92%;
+
+    --destructive: 9 70% 58%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 16% 20%;
+    --input: 222 16% 20%;
+    --ring: 231 70% 66%;
+
+    --signal-pass: 154 55% 45%;
+    --signal-pass-foreground: 154 60% 8%;
+    --signal-fail: 9 65% 60%;
+    --signal-fail-foreground: 9 60% 10%;
+    --signal-warn: 38 65% 55%;
+    --signal-warn-foreground: 38 60% 10%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
+  }
+  /* Visible keyboard focus everywhere — never suppressed for aesthetics. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

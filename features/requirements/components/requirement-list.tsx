@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { FileSearch } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { GenerateTestCasesButton } from "@/features/test-cases/components/generate-test-cases-button";
 
 type RequirementListItem = {
   id: string;
@@ -26,7 +28,13 @@ const priorityVariant = {
   CRITICAL: "fail",
 } as const;
 
-export function RequirementList({ requirements }: { requirements: RequirementListItem[] }) {
+export function RequirementList({
+  requirements,
+  projectId,
+}: {
+  requirements: RequirementListItem[];
+  projectId: string;
+}) {
   if (requirements.length === 0) {
     return (
       <Card>
@@ -60,6 +68,15 @@ export function RequirementList({ requirements }: { requirements: RequirementLis
               {req.createdBy.name ?? req.createdBy.email} ·{" "}
               {new Date(req.createdAt).toLocaleDateString()}
             </p>
+            <div className="flex items-center gap-3 pt-1">
+              <GenerateTestCasesButton requirementId={req.id} />
+              <Link
+                href={`/dashboard/projects/${projectId}/test-cases`}
+                className="text-xs text-primary hover:underline"
+              >
+                View test cases
+              </Link>
+            </div>
           </CardContent>
         </Card>
       ))}

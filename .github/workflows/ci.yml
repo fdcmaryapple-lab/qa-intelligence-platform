@@ -12,6 +12,7 @@ env:
   LOG_LEVEL: error
   NODE_ENV: test
   AUTH_SECRET: ci-only-secret-value-not-used-in-any-real-environment
+  ANTHROPIC_API_KEY: ci-only-dummy-key-never-used-for-a-real-request
 
 jobs:
   lint-and-test:

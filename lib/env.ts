@@ -1,21 +1,5 @@
 import { z } from "zod";
 
-/**
- * Central, validated access point for environment variables.
- *
- * Import `env` instead of reading `process.env` directly anywhere in the
- * codebase. This gives us:
- *  - a single source of truth for what configuration the app needs
- *  - a fast, readable failure at startup if something is missing/malformed,
- *    instead of an obscure runtime error three layers deep
- *  - type-safe access (no `string | undefined` sprinkled everywhere)
- *
- * Server-only secrets (DATABASE_URL, OPENAI_API_KEY, AUTH_SECRET, ...) are
- * intentionally validated in a schema that is never imported into client
- * components. `clientEnv` below is the explicit, narrow allow-list of
- * values safe to ship to the browser.
- */
-
 const serverEnvSchema = z.object({
   NODE_ENV: z
     .enum(["development", "test", "production"])
@@ -34,13 +18,12 @@ const serverEnvSchema = z.object({
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace"])
     .default("info"),
-  // Required as of Phase 3 (Authentication). Generate with:
-  //   openssl rand -base64 32
   AUTH_SECRET: z
     .string()
     .min(1, "AUTH_SECRET is required — generate one with `openssl rand -base64 32`"),
-  // Optional until AI features land (later phase).
-  OPENAI_API_KEY: z.string().min(1).optional(),
+  ANTHROPIC_API_KEY: z
+    .string()
+    .min(1, "ANTHROPIC_API_KEY is required for AI test case generation"),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

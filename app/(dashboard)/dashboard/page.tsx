@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { getCurrentUserId } from "@/server/auth/current-user";
 import * as projectService from "@/server/services/project-service";
 import * as requirementService from "@/server/services/requirement-service";
+import * as testCaseService from "@/server/services/test-case-service";
 import { ProjectList } from "@/features/projects/components/project-list";
 
 export const metadata: Metadata = { title: "Dashboard — QA Intelligence Platform" };
@@ -13,16 +14,17 @@ export const metadata: Metadata = { title: "Dashboard — QA Intelligence Platfo
 export default async function DashboardPage() {
   const userId = await getCurrentUserId();
 
-  const [projects, projectCount, requirementCount] = await Promise.all([
+  const [projects, projectCount, requirementCount, testCaseCount] = await Promise.all([
     projectService.listProjectsForUser(userId),
     projectService.countProjectsForUser(userId),
     requirementService.countRequirementsForUser(userId),
+    testCaseService.countTestCasesForUser(userId),
   ]);
 
   const summaryCards = [
     { label: "Projects", value: projectCount, icon: FolderKanban },
     { label: "Requirements", value: requirementCount, icon: FileSearch },
-    { label: "Test cases", value: 0, icon: ListChecks },
+    { label: "Test cases", value: testCaseCount, icon: ListChecks },
     { label: "Open bugs", value: 0, icon: Bug },
   ];
 
@@ -32,11 +34,11 @@ export default async function DashboardPage() {
         <div>
           <h2 className="font-display text-xl font-semibold tracking-tight">Overview</h2>
           <p className="text-sm text-muted-foreground">
-            Test case tracking and bug reports arrive in later phases.
+            Bug reports arrive in a later phase.
           </p>
         </div>
         <Badge variant="secondary" className="font-mono">
-          Phase 2 · Projects &amp; Requirements
+          Phase 4 · Test Cases &amp; AI Generation
         </Badge>
       </div>
 

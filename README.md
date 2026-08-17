@@ -37,7 +37,7 @@ Foundation only.**
 | Backend    | Next.js API routes / server actions, TypeScript, Prisma ORM   |
 | Database   | PostgreSQL                                                     |
 | Auth       | Auth.js (arrives Phase 3)                                      |
-| AI         | OpenAI API (arrives Phase 3)                                   |
+| AI         | Anthropic (Claude) API — live as of Phase 4 (test case generation)                                   |
 | Testing    | Vitest (unit/integration), Playwright (E2E)                   |
 | DevOps     | Docker, GitHub Actions                                         |
 
@@ -86,7 +86,7 @@ instead of failing unpredictably later.
 | `NEXT_PUBLIC_APP_URL`  | auto-defaulted       | Base URL of the running app                  |
 | `LOG_LEVEL`            | auto-defaulted       | `fatal`\|`error`\|`warn`\|`info`\|`debug`\|`trace` |
 | `AUTH_SECRET`          | not yet               | Required starting Phase 3 (Auth.js)          |
-| `OPENAI_API_KEY`       | not yet               | Required starting Phase 3 (AI features). Server-side only — never exposed to the browser. |
+| `ANTHROPIC_API_KEY`    | ✅                    | Required for AI test case generation. Get a key at console.anthropic.com/settings/keys — new accounts get a small trial credit without a card. Server-side only. |
 
 ## Database setup
 

@@ -5,14 +5,14 @@ import { ArrowLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { getCurrentUserId } from "@/server/auth/current-user";
 import * as projectService from "@/server/services/project-service";
-import * as testCaseService from "@/server/services/test-case-service";
-import { TestCaseList } from "@/features/test-cases/components/test-case-list";
-import { CreateTestCaseDialog } from "@/features/test-cases/components/create-test-case-dialog";
+import * as bugService from "@/server/services/bug-service";
+import { BugList } from "@/features/bugs/components/bug-list";
+import { CreateBugDialog } from "@/features/bugs/components/create-bug-dialog";
 import { NotFoundError } from "@/lib/errors";
 
-export const metadata: Metadata = { title: "Test Cases — QA Intelligence Platform" };
+export const metadata: Metadata = { title: "Bugs — QA Intelligence Platform" };
 
-export default async function TestCasesPage({
+export default async function BugsPage({
   params,
 }: {
   params: Promise<{ projectId: string }>;
@@ -34,7 +34,7 @@ export default async function TestCasesPage({
     notFound();
   }
 
-  const testCases = await testCaseService.listTestCases(userId, projectId);
+  const bugs = await bugService.listBugs(userId, projectId);
 
   return (
     <div className="space-y-6">
@@ -48,13 +48,13 @@ export default async function TestCasesPage({
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <h2 className="font-display text-xl font-semibold tracking-tight">Test Cases</h2>
-          <Badge variant="secondary">{testCases.length}</Badge>
+          <h2 className="font-display text-xl font-semibold tracking-tight">Bugs</h2>
+          <Badge variant="secondary">{bugs.length}</Badge>
         </div>
-        <CreateTestCaseDialog projectId={projectId} />
+        <CreateBugDialog projectId={projectId} />
       </div>
 
-      <TestCaseList testCases={testCases} projectId={projectId} />
+      <BugList bugs={bugs} />
     </div>
   );
 }

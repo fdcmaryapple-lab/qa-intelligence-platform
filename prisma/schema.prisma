@@ -1,11 +1,4 @@
 // QA Intelligence Platform — Prisma schema
-//
-// Design notes:
-//  - IDs are cuid() strings: URL-safe, sortable-ish, no leaking sequential
-//    row counts the way auto-increment ints do.
-//  - Timestamps: createdAt/updatedAt on every mutable table.
-//  - Soft-delete is intentionally NOT used yet — deletions are hard until
-//    a real compliance/retention requirement justifies the complexity.
 
 generator client {
   provider = "prisma-client-js"
@@ -23,7 +16,6 @@ model User {
   name          String?
   passwordHash  String?
   image         String?
-  /// Platform-wide role, independent of per-project roles (ProjectMember.role).
   platformRole  PlatformRole @default(MEMBER)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -35,6 +27,7 @@ model User {
   sessions      Session[]
   testCases     TestCase[]
   aiGenerations AiGeneration[]
+  bugs          Bug[]
 
   @@map("users")
 }
@@ -44,8 +37,6 @@ enum PlatformRole {
   PLATFORM_ADMIN
 }
 
-/// A QA workspace. All domain data (requirements, test cases, runs, ...)
-/// is scoped to a Project.
 model Project {
   id          String   @id @default(cuid())
   name        String
@@ -59,14 +50,12 @@ model Project {
   requirements Requirement[]
   testCases   TestCase[]
   aiGenerations AiGeneration[]
+  bugs        Bug[]
 
   @@index([slug])
   @@map("projects")
 }
 
-/// Join table between User and Project, carrying the user's role within
-/// that specific project. This is the single source of truth authorization
-/// checks (requireProjectAccess) query against.
 model ProjectMember {
   id        String      @id @default(cuid())
   userId    String
@@ -89,7 +78,6 @@ enum ProjectRole {
   VIEWER
 }
 
-/// Append-only audit trail.
 model AuditLog {
   id         String   @id @default(cuid())
   actorId    String?
@@ -108,8 +96,6 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-/// A requirement belonging to a Project. TestCase (traced back to the
-/// requirement it covers) attaches here — see the TestCase model below.
 model Requirement {
   id          String              @id @default(cuid())
   projectId   String
@@ -143,18 +129,6 @@ enum RequirementPriority {
   CRITICAL
 }
 
-// ─────────────────────────────────────────────────────────────
-// Phase 3: Auth.js adapter tables.
-//
-// Shape is the standard one Auth.js's PrismaAdapter expects — see
-// https://authjs.dev/getting-started/adapters/prisma. Sessions currently
-// use the "jwt" strategy (see auth.ts for why — the originally planned
-// "database" strategy isn't supported alongside a Credentials provider),
-// so the Session table isn't actively written to right now, but the
-// adapter and its full standard schema stay in place for when an OAuth
-// provider gets added.
-// ─────────────────────────────────────────────────────────────
-
 model Account {
   id                String  @id @default(cuid())
   userId            String
@@ -186,8 +160,6 @@ model Session {
   @@map("sessions")
 }
 
-/// Used for email-verification / passwordless flows. Not exercised yet
-/// (credentials-only for now) but required by the adapter's schema shape.
 model VerificationToken {
   identifier String
   token      String   @unique
@@ -197,19 +169,9 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
-// ─────────────────────────────────────────────────────────────
-// Phase 4: Test Case Management + AI Test Generation.
-//
-// TestSuite/TestSuiteItem (grouping test cases into named suites) are
-// deliberately deferred — TestCase linking directly to Requirement is a
-// complete, useful unit on its own, and suites are a purely additive
-// layer on top later (a join table), not a schema change to this model.
-// ─────────────────────────────────────────────────────────────
-
 /// A single test case, optionally traced back to the requirement it
-/// covers. Can be authored manually or by AI (see aiGenerationId) — either
-/// way it starts as reviewStatus=DRAFT and a human decides what happens
-/// next. Never trust reviewStatus=DRAFT content as verified.
+/// covers. Bug (Phase 5) can optionally trace back to the test case that
+/// surfaced it.
 model TestCase {
   id             String        @id @default(cuid())
   projectId      String
@@ -217,10 +179,6 @@ model TestCase {
   title          String
   description    String?
   preconditions  String?
-  /// Ordered list of step strings. A plain string array rather than a
-  /// separate TestStep table — steps are never queried/filtered
-  /// independently of their parent test case, so the relational overhead
-  /// wouldn't buy anything.
   steps          String[]
   expectedResult String?
   type           TestCaseType   @default(FUNCTIONAL)
@@ -235,6 +193,7 @@ model TestCase {
   requirement  Requirement?  @relation(fields: [requirementId], references: [id], onDelete: SetNull)
   createdBy    User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
   aiGeneration AiGeneration? @relation(fields: [aiGenerationId], references: [id], onDelete: SetNull)
+  bugs         Bug[]
 
   @@index([projectId])
   @@index([requirementId])
@@ -250,8 +209,6 @@ enum TestCaseType {
   REGRESSION
 }
 
-/// Applies to any AI-originated content, not just TestCase — the same
-/// enum will be reused by RequirementAnalysis, Bug, etc. in later phases.
 enum ReviewStatus {
   DRAFT
   ACCEPTED
@@ -259,9 +216,6 @@ enum ReviewStatus {
   REJECTED
 }
 
-/// One row per AI API call. Every AI-generated artifact links back here
-/// via a nullable aiGenerationId FK, rather than duplicating
-/// model/token/prompt-version columns on every one of those tables.
 model AiGeneration {
   id            String   @id @default(cuid())
   targetType    String
@@ -278,7 +232,48 @@ model AiGeneration {
   createdBy User       @relation(fields: [createdById], references: [id], onDelete: Restrict)
   project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   testCases TestCase[]
+  bugs      Bug[]
 
   @@index([projectId, createdAt])
   @@map("ai_generations")
+}
+
+/// A bug report, optionally traced back to the test case that surfaced
+/// it. `status` tracks the bug's own lifecycle independently of
+/// reviewStatus, which only tracks whether AI-drafted content is vetted.
+model Bug {
+  id               String              @id @default(cuid())
+  projectId        String
+  testCaseId       String?
+  title            String
+  description      String?
+  preconditions    String?
+  stepsToReproduce String[]
+  expectedResult   String?
+  actualResult     String?
+  severity         RequirementPriority @default(MEDIUM)
+  priority         RequirementPriority @default(MEDIUM)
+  status           BugStatus           @default(OPEN)
+  reviewStatus     ReviewStatus        @default(DRAFT)
+  aiGenerationId   String?
+  createdById      String
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  testCase     TestCase?     @relation(fields: [testCaseId], references: [id], onDelete: SetNull)
+  createdBy    User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  aiGeneration AiGeneration? @relation(fields: [aiGenerationId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, status])
+  @@index([testCaseId])
+  @@map("bugs")
+}
+
+enum BugStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+  WONT_FIX
 }

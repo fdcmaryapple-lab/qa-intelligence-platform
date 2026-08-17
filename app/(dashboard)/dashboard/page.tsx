@@ -7,6 +7,7 @@ import { getCurrentUserId } from "@/server/auth/current-user";
 import * as projectService from "@/server/services/project-service";
 import * as requirementService from "@/server/services/requirement-service";
 import * as testCaseService from "@/server/services/test-case-service";
+import * as bugService from "@/server/services/bug-service";
 import { ProjectList } from "@/features/projects/components/project-list";
 
 export const metadata: Metadata = { title: "Dashboard — QA Intelligence Platform" };
@@ -14,18 +15,20 @@ export const metadata: Metadata = { title: "Dashboard — QA Intelligence Platfo
 export default async function DashboardPage() {
   const userId = await getCurrentUserId();
 
-  const [projects, projectCount, requirementCount, testCaseCount] = await Promise.all([
-    projectService.listProjectsForUser(userId),
-    projectService.countProjectsForUser(userId),
-    requirementService.countRequirementsForUser(userId),
-    testCaseService.countTestCasesForUser(userId),
-  ]);
+  const [projects, projectCount, requirementCount, testCaseCount, openBugCount] =
+    await Promise.all([
+      projectService.listProjectsForUser(userId),
+      projectService.countProjectsForUser(userId),
+      requirementService.countRequirementsForUser(userId),
+      testCaseService.countTestCasesForUser(userId),
+      bugService.countOpenBugsForUser(userId),
+    ]);
 
   const summaryCards = [
     { label: "Projects", value: projectCount, icon: FolderKanban },
     { label: "Requirements", value: requirementCount, icon: FileSearch },
     { label: "Test cases", value: testCaseCount, icon: ListChecks },
-    { label: "Open bugs", value: 0, icon: Bug },
+    { label: "Open bugs", value: openBugCount, icon: Bug },
   ];
 
   return (
@@ -34,11 +37,11 @@ export default async function DashboardPage() {
         <div>
           <h2 className="font-display text-xl font-semibold tracking-tight">Overview</h2>
           <p className="text-sm text-muted-foreground">
-            Bug reports arrive in a later phase.
+            API testing, automation, and risk prediction arrive in later phases.
           </p>
         </div>
         <Badge variant="secondary" className="font-mono">
-          Phase 4 · Test Cases &amp; AI Generation
+          Phase 5 · Bug Reports
         </Badge>
       </div>
 

@@ -45,12 +45,20 @@ export default async function ProjectDetailPage({
             <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
           ) : null}
         </div>
-        <Link
-          href={`/dashboard/projects/${project.id}/test-cases`}
-          className="text-sm text-primary hover:underline"
-        >
-          View all test cases →
-        </Link>
+        <div className="flex gap-4">
+          <Link
+            href={`/dashboard/projects/${project.id}/test-cases`}
+            className="text-sm text-primary hover:underline"
+          >
+            View all test cases →
+          </Link>
+          <Link
+            href={`/dashboard/projects/${project.id}/bugs`}
+            className="text-sm text-primary hover:underline"
+          >
+            View all bugs →
+          </Link>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">

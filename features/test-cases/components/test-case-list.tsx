@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { ListChecks, Sparkles } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ReviewStatusActions } from "@/features/test-cases/components/review-status-actions";
+import { GenerateBugReportDialog } from "@/features/bugs/components/generate-bug-report-dialog";
 
 type TestCaseListItem = {
   id: string;
@@ -31,7 +33,13 @@ const reviewStatusVariant = {
   REJECTED: "fail",
 } as const;
 
-export function TestCaseList({ testCases }: { testCases: TestCaseListItem[] }) {
+export function TestCaseList({
+  testCases,
+  projectId,
+}: {
+  testCases: TestCaseListItem[];
+  projectId: string;
+}) {
   if (testCases.length === 0) {
     return (
       <Card>
@@ -112,6 +120,16 @@ export function TestCaseList({ testCases }: { testCases: TestCaseListItem[] }) {
                       <ReviewStatusActions testCaseId={tc.id} />
                     </div>
                   ) : null}
+
+                  <div className="flex items-center gap-3 pt-1">
+                    <GenerateBugReportDialog testCaseId={tc.id} testCaseTitle={tc.title} />
+                    <Link
+                      href={`/dashboard/projects/${projectId}/bugs`}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      View bugs
+                    </Link>
+                  </div>
                 </CardContent>
               </Card>
             ))}

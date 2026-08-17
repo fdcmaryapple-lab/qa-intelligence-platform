@@ -1,5 +1,6 @@
 import { MobileSidebar } from "@/components/shared/sidebar";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
+import { SignOutButton } from "@/components/shared/sign-out-button";
 
 export function TopNav({ title }: { title?: string }) {
   return (
@@ -14,6 +15,7 @@ export function TopNav({ title }: { title?: string }) {
       </div>
       <div className="flex items-center gap-2">
         <ThemeToggle />
+        <SignOutButton />
       </div>
     </header>
   );

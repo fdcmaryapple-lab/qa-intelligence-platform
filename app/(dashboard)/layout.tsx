@@ -1,9 +1,26 @@
+import { redirect } from "next/navigation";
+import { auth } from "@/auth";
 import { DesktopSidebar } from "@/components/shared/sidebar";
 import { TopNav } from "@/components/shared/topnav";
 
 export const dynamic = "force-dynamic";
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+/**
+ * The actual authentication boundary for the whole dashboard.
+ *
+ * Deliberately a Server Component session check, not middleware/proxy-based
+ * route protection — Next.js middleware-only auth has a documented bypass
+ * (CVE-2025-29927, header spoofing), so relying on it as the sole gate is
+ * unsafe. Checking the session here, directly in the render path of every
+ * dashboard page, has no equivalent bypass.
+ */
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const session = await auth();
+
+  if (!session) {
+    redirect("/login");
+  }
+
   return (
     <div className="flex min-h-screen">
       <DesktopSidebar />

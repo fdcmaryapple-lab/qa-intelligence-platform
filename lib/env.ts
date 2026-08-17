@@ -34,8 +34,12 @@ const serverEnvSchema = z.object({
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace"])
     .default("info"),
-  // Optional in Phase 1 — become required once their features land.
-  AUTH_SECRET: z.string().min(1).optional(),
+  // Required as of Phase 3 (Authentication). Generate with:
+  //   openssl rand -base64 32
+  AUTH_SECRET: z
+    .string()
+    .min(1, "AUTH_SECRET is required — generate one with `openssl rand -base64 32`"),
+  // Optional until AI features land (later phase).
   OPENAI_API_KEY: z.string().min(1).optional(),
 });
 
@@ -49,8 +53,6 @@ function loadServerEnv(): ServerEnv {
       .map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`)
       .join("\n");
 
-    // Fail loudly and immediately. A misconfigured environment should
-    // never result in the app starting in a half-working state.
     throw new Error(
       `Invalid environment configuration:\n${formatted}\n\nCheck your .env file against .env.example.`,
     );
@@ -61,10 +63,6 @@ function loadServerEnv(): ServerEnv {
 
 export const env: ServerEnv = loadServerEnv();
 
-/**
- * Explicit allow-list of environment values safe to expose to the browser.
- * Only NEXT_PUBLIC_* values belong here — never spread `env` wholesale.
- */
 export const clientEnv = {
   appUrl: env.NEXT_PUBLIC_APP_URL,
 } as const;

@@ -11,6 +11,7 @@ env:
   NEXT_PUBLIC_APP_URL: http://localhost:3000
   LOG_LEVEL: error
   NODE_ENV: test
+  AUTH_SECRET: ci-only-secret-value-not-used-in-any-real-environment
 
 jobs:
   lint-and-test:

@@ -1,11 +1,5 @@
 // QA Intelligence Platform — Prisma schema
 //
-// Phase 1 scope: only the identity/workspace core (User, Project,
-// ProjectMember) plus AuditLog, since audit logging hooks into every
-// later mutation. Requirement/TestCase/AI/etc. models arrive in their
-// respective phases per the roadmap — see the architecture doc for the
-// full intended ERD.
-//
 // Design notes:
 //  - IDs are cuid() strings: URL-safe, sortable-ish, no leaking sequential
 //    row counts the way auto-increment ints do.
@@ -37,6 +31,8 @@ model User {
   memberships   ProjectMember[]
   auditLogs     AuditLog[]
   requirements  Requirement[]
+  accounts      Account[]
+  sessions      Session[]
 
   @@map("users")
 }
@@ -89,17 +85,13 @@ enum ProjectRole {
   VIEWER
 }
 
-/// Append-only audit trail. `targetType`/`targetId` are a polymorphic
-/// reference (e.g. targetType="Requirement", targetId="<cuid>") rather than
-/// a foreign key per entity type, since this table must survive and remain
-/// queryable regardless of how many domain tables get added over time.
+/// Append-only audit trail.
 model AuditLog {
   id         String   @id @default(cuid())
   actorId    String?
   action     String
   targetType String
   targetId   String
-  /// Structured before/after or metadata payload for this action.
   metadata   Json?
   projectId  String?
   createdAt  DateTime @default(now())
@@ -112,10 +104,7 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-/// Phase 2: a requirement belonging to a Project. RequirementAnalysis
-/// (AI-generated) and TestCase (traced back to the requirement it covers)
-/// attach here in later phases — this model is intentionally the anchor
-/// point both hang off of.
+/// A requirement belonging to a Project.
 model Requirement {
   id          String              @id @default(cuid())
   projectId   String
@@ -146,4 +135,52 @@ enum RequirementPriority {
   MEDIUM
   HIGH
   CRITICAL
+}
+
+// ─────────────────────────────────────────────────────────────
+// Phase 3: Auth.js adapter tables — standard shape PrismaAdapter expects.
+// Session strategy is "database", not JWT, so sessions can be revoked
+// server-side (delete the Session row) — a deliberate architecture choice.
+// ─────────────────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+/// Used for email-verification / passwordless flows. Not exercised yet
+/// (credentials-only for now) but required by the adapter's schema shape.
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
 }

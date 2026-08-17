@@ -1,11 +1,9 @@
 import type { Metadata } from "next";
 import { Newsreader, Inter, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/shared/theme-provider";
+import { SessionProvider } from "@/components/shared/session-provider";
 import "./globals.css";
 
-// Display face: an editorial serif — evokes "report" / "document", which
-// fits a product whose core outputs are requirement analyses, bug reports,
-// and QA reports. Used with restraint (headings only).
 const fontDisplay = Newsreader({
   subsets: ["latin"],
   variable: "--font-display",
@@ -13,14 +11,11 @@ const fontDisplay = Newsreader({
   style: ["normal", "italic"],
 });
 
-// Body/UI face: built for dense interface text and data tables.
 const fontSans = Inter({
   subsets: ["latin"],
   variable: "--font-sans",
 });
 
-// Monospace: for test IDs, code, logs, and locators — content that is
-// literally code or code-adjacent throughout this product.
 const fontMono = JetBrains_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
@@ -41,9 +36,11 @@ export default function RootLayout({
       <body
         className={`${fontDisplay.variable} ${fontSans.variable} ${fontMono.variable} font-sans antialiased`}
       >
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          {children}
-        </ThemeProvider>
+        <SessionProvider>
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+            {children}
+          </ThemeProvider>
+        </SessionProvider>
       </body>
     </html>
   );

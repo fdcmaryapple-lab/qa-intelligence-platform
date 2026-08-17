@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
@@ -10,32 +12,34 @@ import { Label } from "@/components/ui/label";
 import { loginSchema, type LoginInput } from "@/features/auth/schemas/auth-schemas";
 
 export function LoginForm() {
-  const [status, setStatus] = React.useState<"idle" | "submitting" | "submitted">("idle");
+  const router = useRouter();
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
 
-  // Auth.js wiring lands in Phase 3. For now this validates input and shows
-  // where the credential exchange will happen, so the UI is exercisable
-  // end-to-end before real authentication exists.
-  async function onSubmit(_values: LoginInput) {
-    setStatus("submitting");
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    setStatus("submitted");
-  }
+  async function onSubmit(values: LoginInput) {
+    setSubmitError(null);
 
-  if (status === "submitted") {
-    return (
-      <div className="rounded-md border border-pass/30 bg-pass/10 px-4 py-3 text-sm text-pass">
-        Form validated. Sign-in will be wired up once Auth.js lands in Phase 3.
-      </div>
-    );
+    const result = await signIn("credentials", {
+      email: values.email,
+      password: values.password,
+      redirect: false,
+    });
+
+    if (result?.error) {
+      setSubmitError("Incorrect email or password.");
+      return;
+    }
+
+    router.push("/dashboard");
+    router.refresh();
   }
 
   return (
@@ -75,8 +79,10 @@ export function LoginForm() {
         ) : null}
       </div>
 
-      <Button type="submit" className="w-full" disabled={status === "submitting"}>
-        {status === "submitting" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+      {submitError ? <p className="text-sm text-destructive">{submitError}</p> : null}
+
+      <Button type="submit" className="w-full" disabled={isSubmitting}>
+        {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
         Sign in
       </Button>
     </form>

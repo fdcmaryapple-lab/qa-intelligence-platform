@@ -1,21 +1,20 @@
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-/**
- * Development seed data.
- *
- * Kept intentionally minimal in Phase 1 — just enough to verify the schema
- * works end-to-end. Grows alongside each phase (a seeded project with
- * requirements, test cases, etc. once those models exist).
- */
+const DEMO_PASSWORD = "demo-password-123";
+
 async function main() {
+  const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 12);
+
   const owner = await prisma.user.upsert({
     where: { email: "owner@example.com" },
-    update: {},
+    update: { passwordHash },
     create: {
       email: "owner@example.com",
       name: "Alex Owner",
+      passwordHash,
     },
   });
 
@@ -36,6 +35,7 @@ async function main() {
   });
 
   console.warn(`Seeded user ${owner.email} as OWNER of project "${project.name}"`);
+  console.warn(`Demo login — email: ${owner.email}  password: ${DEMO_PASSWORD}`);
 }
 
 main()

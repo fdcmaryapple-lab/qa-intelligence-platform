@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2 } from "lucide-react";
@@ -8,33 +10,43 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { registerSchema, type RegisterInput } from "@/features/auth/schemas/auth-schemas";
+import { registerAction } from "@/features/auth/actions";
 
 export function RegisterForm() {
-  const [status, setStatus] = React.useState<"idle" | "submitting" | "submitted">("idle");
+  const router = useRouter();
+  const [submitError, setSubmitError] = React.useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
     defaultValues: { name: "", email: "", password: "", confirmPassword: "" },
   });
 
-  // Real account creation lands alongside Auth.js in Phase 3. This validates
-  // the full shape (including password confirmation) end-to-end already.
-  async function onSubmit(_values: RegisterInput) {
-    setStatus("submitting");
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    setStatus("submitted");
-  }
+  async function onSubmit(values: RegisterInput) {
+    setSubmitError(null);
 
-  if (status === "submitted") {
-    return (
-      <div className="rounded-md border border-pass/30 bg-pass/10 px-4 py-3 text-sm text-pass">
-        Form validated. Account creation will be wired up once Auth.js lands in Phase 3.
-      </div>
-    );
+    const result = await registerAction(values);
+    if (!result.success) {
+      setSubmitError(result.error.message);
+      return;
+    }
+
+    const signInResult = await signIn("credentials", {
+      email: values.email,
+      password: values.password,
+      redirect: false,
+    });
+
+    if (signInResult?.error) {
+      router.push("/login");
+      return;
+    }
+
+    router.push("/dashboard");
+    router.refresh();
   }
 
   return (
@@ -92,8 +104,10 @@ export function RegisterForm() {
         ) : null}
       </div>
 
-      <Button type="submit" className="w-full" disabled={status === "submitting"}>
-        {status === "submitting" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+      {submitError ? <p className="text-sm text-destructive">{submitError}</p> : null}
+
+      <Button type="submit" className="w-full" disabled={isSubmitting}>
+        {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
         Create account
       </Button>
     </form>

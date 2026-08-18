@@ -64,6 +64,12 @@ export default async function ProjectDetailPage({
           >
             View API tests →
           </Link>
+          <Link
+            href={`/dashboard/projects/${project.id}/automation`}
+            className="text-sm text-primary hover:underline"
+          >
+            View automation →
+          </Link>
         </div>
       </div>
 

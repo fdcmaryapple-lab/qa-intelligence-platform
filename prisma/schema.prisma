@@ -1,5 +1,3 @@
-// QA Intelligence Platform — Prisma schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,7 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// A person who can sign in to the platform.
 model User {
   id            String   @id @default(cuid())
   email         String   @unique
@@ -30,6 +27,7 @@ model User {
   bugs          Bug[]
   apiRequests   ApiRequest[]
   apiExecutions ApiRequestExecution[]
+  automationScripts AutomationScript[]
 
   @@map("users")
 }
@@ -55,6 +53,7 @@ model Project {
   bugs        Bug[]
   apiRequests ApiRequest[]
   apiRequestExecutions ApiRequestExecution[]
+  automationScripts AutomationScript[]
 
   @@index([slug])
   @@map("projects")
@@ -195,6 +194,7 @@ model TestCase {
   createdBy    User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
   aiGeneration AiGeneration? @relation(fields: [aiGenerationId], references: [id], onDelete: SetNull)
   bugs         Bug[]
+  automationScripts AutomationScript[]
 
   @@index([projectId])
   @@index([requirementId])
@@ -234,6 +234,7 @@ model AiGeneration {
   project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   testCases TestCase[]
   bugs      Bug[]
+  automationScripts AutomationScript[]
 
   @@index([projectId, createdAt])
   @@map("ai_generations")
@@ -275,30 +276,6 @@ enum BugStatus {
   CLOSED
   WONT_FIX
 }
-
-// ─────────────────────────────────────────────────────────────
-// Phase 6: API Testing Workspace.
-//
-// Requests are executed server-side (see server/http/execute-request.ts)
-// so they work regardless of the target API's CORS policy and can reach
-// internal/local URLs — the actual point of a QA tool testing your own
-// APIs. That does mean the server makes outbound requests to URLs the
-// user supplies, which is a real SSRF consideration in a multi-tenant
-// setting; server/http/ssrf-guard.ts blocks the one genuinely dangerous
-// class of target (cloud metadata endpoints) while deliberately still
-// allowing localhost/private IPs, since testing local dev APIs is core
-// to this feature. See that file's comments for exactly what is and
-// isn't covered — it is hostname/IP-literal checking, not full
-// DNS-resolution verification, so it does not defend against a
-// DNS-rebinding attack. Fine for a single-user local tool; would need
-// hardening before any multi-tenant deployment.
-//
-// Execution history is fully captured in ApiRequestExecution from day
-// one, even though the UI this phase only surfaces the most recent
-// result inline on each request's card — a dedicated history view is a
-// pure UI addition on top of data that already exists, not a schema
-// change, whenever that's worth building.
-// ─────────────────────────────────────────────────────────────
 
 model ApiRequest {
   id          String     @id @default(cuid())
@@ -388,4 +365,50 @@ enum ExecutionResult {
   PASS
   FAIL
   ERROR
+}
+
+// ─────────────────────────────────────────────────────────────
+// Phase 7: Playwright Automation Generator.
+//
+// Deliberately generate-and-save only, no server-side execution of the
+// generated script. Running AI-generated code is a materially different
+// (and much larger) risk than Phase 6's HTTP-request execution — it's
+// arbitrary code execution, not a bounded HTTP call an SSRF guard can
+// reasonably fence in. What this phase DOES do instead:
+//   1. AI generates a Playwright (@playwright/test) TypeScript script
+//      from a test case's steps/expected result.
+//   2. The script is syntax-checked via the TypeScript compiler API
+//      (server/automation/validate-script.ts) — this parses the code to
+//      find syntax errors WITHOUT ever executing it. transpileModule()
+//      only transpiles; it never runs the resulting JS.
+//   3. The user copies/downloads the script and runs it themselves via
+//      this project's own Playwright setup (npm run test:e2e).
+// Real server-side execution — spawning Playwright, capturing pass/fail,
+// screenshots — is a legitimate future feature, but needs its own
+// carefully-scoped phase with real sandboxing (isolated containers,
+// resource limits), not a bolt-on here.
+// ─────────────────────────────────────────────────────────────
+
+model AutomationScript {
+  id               String       @id @default(cuid())
+  projectId        String
+  testCaseId       String?
+  title            String
+  code             String
+  reviewStatus     ReviewStatus @default(DRAFT)
+  isValid          Boolean?
+  validationErrors String?
+  aiGenerationId   String?
+  createdById      String
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  testCase     TestCase?     @relation(fields: [testCaseId], references: [id], onDelete: SetNull)
+  createdBy    User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  aiGeneration AiGeneration? @relation(fields: [aiGenerationId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([testCaseId])
+  @@map("automation_scripts")
 }

@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ReviewStatusActions } from "@/features/test-cases/components/review-status-actions";
 import { GenerateBugReportDialog } from "@/features/bugs/components/generate-bug-report-dialog";
+import { GenerateAutomationButton } from "@/features/automation/components/generate-automation-button";
 
 type TestCaseListItem = {
   id: string;
@@ -121,13 +122,20 @@ export function TestCaseList({
                     </div>
                   ) : null}
 
-                  <div className="flex items-center gap-3 pt-1">
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
                     <GenerateBugReportDialog testCaseId={tc.id} testCaseTitle={tc.title} />
                     <Link
                       href={`/dashboard/projects/${projectId}/bugs`}
                       className="text-xs text-primary hover:underline"
                     >
                       View bugs
+                    </Link>
+                    <GenerateAutomationButton testCaseId={tc.id} />
+                    <Link
+                      href={`/dashboard/projects/${projectId}/automation`}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      View automation
                     </Link>
                   </div>
                 </CardContent>

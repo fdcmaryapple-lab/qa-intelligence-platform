@@ -58,6 +58,12 @@ export default async function ProjectDetailPage({
           >
             View all bugs →
           </Link>
+          <Link
+            href={`/dashboard/projects/${project.id}/api-testing`}
+            className="text-sm text-primary hover:underline"
+          >
+            View API tests →
+          </Link>
         </div>
       </div>
 

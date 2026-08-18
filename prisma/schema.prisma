@@ -28,6 +28,8 @@ model User {
   testCases     TestCase[]
   aiGenerations AiGeneration[]
   bugs          Bug[]
+  apiRequests   ApiRequest[]
+  apiExecutions ApiRequestExecution[]
 
   @@map("users")
 }
@@ -51,6 +53,8 @@ model Project {
   testCases   TestCase[]
   aiGenerations AiGeneration[]
   bugs        Bug[]
+  apiRequests ApiRequest[]
+  apiRequestExecutions ApiRequestExecution[]
 
   @@index([slug])
   @@map("projects")
@@ -169,9 +173,6 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
-/// A single test case, optionally traced back to the requirement it
-/// covers. Bug (Phase 5) can optionally trace back to the test case that
-/// surfaced it.
 model TestCase {
   id             String        @id @default(cuid())
   projectId      String
@@ -238,9 +239,6 @@ model AiGeneration {
   @@map("ai_generations")
 }
 
-/// A bug report, optionally traced back to the test case that surfaced
-/// it. `status` tracks the bug's own lifecycle independently of
-/// reviewStatus, which only tracks whether AI-drafted content is vetted.
 model Bug {
   id               String              @id @default(cuid())
   projectId        String
@@ -276,4 +274,118 @@ enum BugStatus {
   RESOLVED
   CLOSED
   WONT_FIX
+}
+
+// ─────────────────────────────────────────────────────────────
+// Phase 6: API Testing Workspace.
+//
+// Requests are executed server-side (see server/http/execute-request.ts)
+// so they work regardless of the target API's CORS policy and can reach
+// internal/local URLs — the actual point of a QA tool testing your own
+// APIs. That does mean the server makes outbound requests to URLs the
+// user supplies, which is a real SSRF consideration in a multi-tenant
+// setting; server/http/ssrf-guard.ts blocks the one genuinely dangerous
+// class of target (cloud metadata endpoints) while deliberately still
+// allowing localhost/private IPs, since testing local dev APIs is core
+// to this feature. See that file's comments for exactly what is and
+// isn't covered — it is hostname/IP-literal checking, not full
+// DNS-resolution verification, so it does not defend against a
+// DNS-rebinding attack. Fine for a single-user local tool; would need
+// hardening before any multi-tenant deployment.
+//
+// Execution history is fully captured in ApiRequestExecution from day
+// one, even though the UI this phase only surfaces the most recent
+// result inline on each request's card — a dedicated history view is a
+// pure UI addition on top of data that already exists, not a schema
+// change, whenever that's worth building.
+// ─────────────────────────────────────────────────────────────
+
+model ApiRequest {
+  id          String     @id @default(cuid())
+  projectId   String
+  name        String
+  method      HttpMethod @default(GET)
+  url         String
+  headers     Json       @default("[]")
+  queryParams Json       @default("[]")
+  bodyType    ApiBodyType @default(NONE)
+  body        String?
+  createdById String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  project    Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy  User                  @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  assertions ApiAssertion[]
+  executions ApiRequestExecution[]
+
+  @@index([projectId])
+  @@map("api_requests")
+}
+
+enum HttpMethod {
+  GET
+  POST
+  PUT
+  PATCH
+  DELETE
+  HEAD
+  OPTIONS
+}
+
+enum ApiBodyType {
+  NONE
+  JSON
+  TEXT
+  FORM
+}
+
+model ApiAssertion {
+  id           String         @id @default(cuid())
+  apiRequestId String
+  type         AssertionType
+  jsonPath     String?
+  expected     String
+  createdAt    DateTime       @default(now())
+
+  apiRequest ApiRequest @relation(fields: [apiRequestId], references: [id], onDelete: Cascade)
+
+  @@index([apiRequestId])
+  @@map("api_assertions")
+}
+
+enum AssertionType {
+  STATUS_EQUALS
+  BODY_CONTAINS
+  JSON_PATH_EQUALS
+}
+
+model ApiRequestExecution {
+  id              String          @id @default(cuid())
+  apiRequestId    String
+  projectId       String
+  executedById    String
+  requestSnapshot Json
+  responseStatus  Int?
+  responseHeaders Json?
+  responseBody    String?
+  responseTruncated Boolean       @default(false)
+  durationMs      Int?
+  error           String?
+  assertionResults Json?
+  result          ExecutionResult
+  createdAt       DateTime        @default(now())
+
+  apiRequest ApiRequest @relation(fields: [apiRequestId], references: [id], onDelete: Cascade)
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  executedBy User       @relation(fields: [executedById], references: [id], onDelete: Restrict)
+
+  @@index([apiRequestId, createdAt])
+  @@map("api_request_executions")
+}
+
+enum ExecutionResult {
+  PASS
+  FAIL
+  ERROR
 }

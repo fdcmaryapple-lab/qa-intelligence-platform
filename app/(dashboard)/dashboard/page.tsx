@@ -37,11 +37,11 @@ export default async function DashboardPage() {
         <div>
           <h2 className="font-display text-xl font-semibold tracking-tight">Overview</h2>
           <p className="text-sm text-muted-foreground">
-            API testing, automation, and risk prediction arrive in later phases.
+            Automation, regression tracking, and risk prediction arrive in later phases.
           </p>
         </div>
         <Badge variant="secondary" className="font-mono">
-          Phase 5 · Bug Reports
+          Phase 6 · API Testing
         </Badge>
       </div>
 

@@ -45,7 +45,7 @@ export default async function ProjectDetailPage({
             <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
           ) : null}
         </div>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-4">
           <Link
             href={`/dashboard/projects/${project.id}/test-cases`}
             className="text-sm text-primary hover:underline"
@@ -69,6 +69,18 @@ export default async function ProjectDetailPage({
             className="text-sm text-primary hover:underline"
           >
             View automation →
+          </Link>
+          <Link
+            href={`/dashboard/projects/${project.id}/regression`}
+            className="text-sm text-primary hover:underline"
+          >
+            View regression →
+          </Link>
+          <Link
+            href={`/dashboard/projects/${project.id}/screenshot-diff`}
+            className="text-sm text-primary hover:underline"
+          >
+            View screenshot diff →
           </Link>
         </div>
       </div>

@@ -28,6 +28,10 @@ model User {
   apiRequests   ApiRequest[]
   apiExecutions ApiRequestExecution[]
   automationScripts AutomationScript[]
+  testRuns TestRun[]
+  testRunResultsExecuted TestRunResult[]
+  screenshotBaselines ScreenshotBaseline[]
+  screenshotComparisons ScreenshotComparison[]
 
   @@map("users")
 }
@@ -54,6 +58,9 @@ model Project {
   apiRequests ApiRequest[]
   apiRequestExecutions ApiRequestExecution[]
   automationScripts AutomationScript[]
+  testRuns TestRun[]
+  screenshotBaselines ScreenshotBaseline[]
+  screenshotComparisons ScreenshotComparison[]
 
   @@index([slug])
   @@map("projects")
@@ -195,6 +202,7 @@ model TestCase {
   aiGeneration AiGeneration? @relation(fields: [aiGenerationId], references: [id], onDelete: SetNull)
   bugs         Bug[]
   automationScripts AutomationScript[]
+  testRunResults TestRunResult[]
 
   @@index([projectId])
   @@index([requirementId])
@@ -367,28 +375,6 @@ enum ExecutionResult {
   ERROR
 }
 
-// ─────────────────────────────────────────────────────────────
-// Phase 7: Playwright Automation Generator.
-//
-// Deliberately generate-and-save only, no server-side execution of the
-// generated script. Running AI-generated code is a materially different
-// (and much larger) risk than Phase 6's HTTP-request execution — it's
-// arbitrary code execution, not a bounded HTTP call an SSRF guard can
-// reasonably fence in. What this phase DOES do instead:
-//   1. AI generates a Playwright (@playwright/test) TypeScript script
-//      from a test case's steps/expected result.
-//   2. The script is syntax-checked via the TypeScript compiler API
-//      (server/automation/validate-script.ts) — this parses the code to
-//      find syntax errors WITHOUT ever executing it. transpileModule()
-//      only transpiles; it never runs the resulting JS.
-//   3. The user copies/downloads the script and runs it themselves via
-//      this project's own Playwright setup (npm run test:e2e).
-// Real server-side execution — spawning Playwright, capturing pass/fail,
-// screenshots — is a legitimate future feature, but needs its own
-// carefully-scoped phase with real sandboxing (isolated containers,
-// resource limits), not a bolt-on here.
-// ─────────────────────────────────────────────────────────────
-
 model AutomationScript {
   id               String       @id @default(cuid())
   projectId        String
@@ -411,4 +397,117 @@ model AutomationScript {
   @@index([projectId])
   @@index([testCaseId])
   @@map("automation_scripts")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Phase 8: Regression Tracking + Screenshot Comparison.
+//
+// Regression tracking: a TestRun is a checklist snapshot — "these test
+// cases, checked against this build" — with a PASS/FAIL/BLOCKED/SKIPPED
+// result recorded per test case. No automatic execution; a human records
+// what they observed running the test manually or via the generated
+// automation script, same manual-recording model as the rest of this app.
+//
+// Screenshot comparison: deliberately user-uploaded images only, diffed
+// with pixelmatch — no live browser screenshot capture. Automatically
+// capturing a screenshot would mean navigating a headless browser to a
+// user-supplied URL server-side, which is real infrastructure and
+// reopens the same class of "server acts on an arbitrary URL"
+// consideration as Phase 6's SSRF guard, just for a heavier operation.
+// Uploaded-image diffing delivers the actual "did the UI change" value
+// without any of that — a legitimate future increment, not a gap here.
+// ─────────────────────────────────────────────────────────────
+
+model TestRun {
+  id          String        @id @default(cuid())
+  projectId   String
+  name        String
+  status      TestRunStatus @default(IN_PROGRESS)
+  createdById String
+  createdAt   DateTime      @default(now())
+  completedAt DateTime?
+
+  project   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User            @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  results   TestRunResult[]
+
+  @@index([projectId, createdAt])
+  @@map("test_runs")
+}
+
+enum TestRunStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+model TestRunResult {
+  id           String              @id @default(cuid())
+  testRunId    String
+  testCaseId   String
+  result       TestRunResultStatus @default(NOT_RUN)
+  notes        String?
+  executedById String?
+  executedAt   DateTime?
+
+  testRun    TestRun   @relation(fields: [testRunId], references: [id], onDelete: Cascade)
+  testCase   TestCase  @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  executedBy User?     @relation(fields: [executedById], references: [id], onDelete: SetNull)
+
+  @@unique([testRunId, testCaseId])
+  @@index([testRunId])
+  @@map("test_run_results")
+}
+
+enum TestRunResultStatus {
+  NOT_RUN
+  PASS
+  FAIL
+  BLOCKED
+  SKIPPED
+}
+
+model ScreenshotBaseline {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  image       Bytes
+  width       Int
+  height      Int
+  createdById String
+  createdAt   DateTime @default(now())
+
+  project     Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User                   @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  comparisons ScreenshotComparison[]
+
+  @@index([projectId])
+  @@map("screenshot_baselines")
+}
+
+model ScreenshotComparison {
+  id             String                     @id @default(cuid())
+  baselineId     String
+  projectId      String
+  candidateImage Bytes
+  diffImage      Bytes?
+  diffPixelCount Int?
+  diffPercentage Float?
+  threshold      Float                      @default(1.0)
+  result         ScreenshotComparisonResult
+  error          String?
+  createdById    String
+  createdAt      DateTime                   @default(now())
+
+  baseline  ScreenshotBaseline @relation(fields: [baselineId], references: [id], onDelete: Cascade)
+  project   Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User               @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([baselineId, createdAt])
+  @@map("screenshot_comparisons")
+}
+
+enum ScreenshotComparisonResult {
+  PASS
+  FAIL
+  ERROR
 }

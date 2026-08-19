@@ -32,6 +32,7 @@ model User {
   testRunResultsExecuted TestRunResult[]
   screenshotBaselines ScreenshotBaseline[]
   screenshotComparisons ScreenshotComparison[]
+  aiChatThreads AiChatThread[]
 
   @@map("users")
 }
@@ -61,6 +62,7 @@ model Project {
   testRuns TestRun[]
   screenshotBaselines ScreenshotBaseline[]
   screenshotComparisons ScreenshotComparison[]
+  aiChatThreads AiChatThread[]
 
   @@index([slug])
   @@map("projects")
@@ -399,25 +401,6 @@ model AutomationScript {
   @@map("automation_scripts")
 }
 
-// ─────────────────────────────────────────────────────────────
-// Phase 8: Regression Tracking + Screenshot Comparison.
-//
-// Regression tracking: a TestRun is a checklist snapshot — "these test
-// cases, checked against this build" — with a PASS/FAIL/BLOCKED/SKIPPED
-// result recorded per test case. No automatic execution; a human records
-// what they observed running the test manually or via the generated
-// automation script, same manual-recording model as the rest of this app.
-//
-// Screenshot comparison: deliberately user-uploaded images only, diffed
-// with pixelmatch — no live browser screenshot capture. Automatically
-// capturing a screenshot would mean navigating a headless browser to a
-// user-supplied URL server-side, which is real infrastructure and
-// reopens the same class of "server acts on an arbitrary URL"
-// consideration as Phase 6's SSRF guard, just for a heavier operation.
-// Uploaded-image diffing delivers the actual "did the UI change" value
-// without any of that — a legitimate future increment, not a gap here.
-// ─────────────────────────────────────────────────────────────
-
 model TestRun {
   id          String        @id @default(cuid())
   projectId   String
@@ -510,4 +493,37 @@ enum ScreenshotComparisonResult {
   PASS
   FAIL
   ERROR
+}
+
+model AiChatThread {
+  id          String   @id @default(cuid())
+  projectId   String
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User            @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  messages  AiChatMessage[]
+
+  @@index([projectId])
+  @@map("ai_chat_threads")
+}
+
+model AiChatMessage {
+  id        String   @id @default(cuid())
+  threadId  String
+  role      ChatRole
+  content   String
+  createdAt DateTime @default(now())
+
+  thread AiChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@map("ai_chat_messages")
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
 }

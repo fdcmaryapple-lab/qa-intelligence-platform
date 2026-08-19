@@ -37,11 +37,11 @@ export default async function DashboardPage() {
         <div>
           <h2 className="font-display text-xl font-semibold tracking-tight">Overview</h2>
           <p className="text-sm text-muted-foreground">
-            The AI QA Assistant arrives in a later phase.
+            Settings, users, and platform hardening arrive in the final phase.
           </p>
         </div>
         <Badge variant="secondary" className="font-mono">
-          Phase 10 · QA Reports
+          Phase 11 · AI QA Assistant
         </Badge>
       </div>
 

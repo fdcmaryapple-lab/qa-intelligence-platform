@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 
 function useCurrentProjectId(pathname: string): string | null {
   const match = pathname.match(/^\/dashboard\/projects\/([^/]+)/);
-  return match ? match[1] : null;
+  return match?.[1] ?? null;
 }
 
 function resolveHref(link: NavLink, projectId: string | null): string {

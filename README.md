@@ -148,3 +148,27 @@ actions stay thin (parse input, call a service, map errors to a response).
 Not yet configured — arrives in the final phase of the roadmap (containerized
 app + worker, managed Postgres, GitHub Actions CI/CD). See the architecture
 document for the intended shape.
+
+## Mobile Testing Setup (Appium) — optional, not yet integrated
+
+This app's own automation features (Phase 7/13) generate and run
+**Playwright** scripts against the web UI. The steps below are a separate,
+optional setup guide for engineers who also want to do **native mobile**
+(Android/iOS) test automation with **Appium** alongside this project —
+nothing in the app currently generates, stores, or runs Appium/mocha tests;
+this is prep documentation only, kept here for convenience.
+
+1. Install Android Studio, VS Code, Appium Inspector, Node.js, JDK, and
+   (macOS) Homebrew.
+2. Set up `ANDROID_HOME`, `JAVA_HOME`, and `PATH` in `~/.zshrc`.
+3. Install Appium globally and the `uiautomator2` (and/or `xcuitest`)
+   driver.
+4. Run `appium-doctor --android` and fix anything flagged before
+   proceeding.
+5. Accept Android SDK licenses with `sdkmanager --licenses`.
+6. Enable Developer Options + USB debugging if using a physical device, or
+   create an emulator via Android Studio's Device Manager.
+7. Clone the project repo and run `npm install`.
+8. Confirm your device/emulator is visible via `adb devices`.
+9. Use Appium Inspector to find locators for any new screens.
+10. Run tests with `npx mocha [testfile] --timeout 60000`.

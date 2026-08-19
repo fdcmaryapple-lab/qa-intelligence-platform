@@ -4,11 +4,23 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CheckSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { navSections } from "@/components/shared/nav-links";
+import { navSections, type NavLink } from "@/components/shared/nav-links";
 import { Badge } from "@/components/ui/badge";
+
+function useCurrentProjectId(pathname: string): string | null {
+  const match = pathname.match(/^\/dashboard\/projects\/([^/]+)/);
+  return match ? match[1] : null;
+}
+
+function resolveHref(link: NavLink, projectId: string | null): string {
+  if (link.href) return link.href;
+  if (!projectId) return "/dashboard/projects";
+  return link.projectPath ? `/dashboard/projects/${projectId}/${link.projectPath}` : `/dashboard/projects/${projectId}`;
+}
 
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const projectId = useCurrentProjectId(pathname);
 
   return (
     <div className="flex h-full flex-col">
@@ -27,13 +39,16 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
             </p>
             <ul className="space-y-0.5">
               {section.links.map((link) => {
+                const href = resolveHref(link, projectId);
                 const isActive =
-                  link.href === "/dashboard"
-                    ? pathname === link.href
-                    : pathname === link.href || pathname.startsWith(`${link.href}/`);
+                  link.projectPath === ""
+                    ? pathname === href
+                    : href === "/dashboard"
+                      ? pathname === href
+                      : pathname === href || pathname.startsWith(`${href}/`);
                 const Icon = link.icon;
                 return (
-                  <li key={link.href}>
+                  <li key={link.label}>
                     {link.comingSoon ? (
                       <span
                         className="flex cursor-not-allowed items-center justify-between rounded-md px-3 py-2 text-sm text-muted-foreground/60"
@@ -49,7 +64,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                       </span>
                     ) : (
                       <Link
-                        href={link.href}
+                        href={href}
                         onClick={onNavigate}
                         className={cn(
                           "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors",

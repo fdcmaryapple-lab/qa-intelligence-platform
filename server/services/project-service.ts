@@ -1,11 +1,13 @@
 import * as projectRepository from "@/server/repositories/project-repository";
 import { requireProjectAccess } from "@/server/auth/access-control";
-import { ConflictError } from "@/lib/errors";
+import { ConflictError, NotFoundError, ValidationError } from "@/lib/errors";
 import { slugify } from "@/utils/slugify";
-import type { CreateProjectInput } from "@/features/projects/schemas/project-schemas";
+import type {
+  CreateProjectInput,
+  UpdateProjectInput,
+} from "@/features/projects/schemas/project-schemas";
 import { prisma } from "@/server/db/prisma";
 
-/** Projects the given user is a member of, most recently created first. */
 export async function listProjectsForUser(userId: string) {
   return projectRepository.findProjectsForUser(userId);
 }
@@ -14,18 +16,11 @@ export async function countProjectsForUser(userId: string) {
   return projectRepository.countProjectsForUser(userId);
 }
 
-/** A single project — throws NotFoundError/ForbiddenError via requireProjectAccess if the user can't see it. */
 export async function getProject(userId: string, projectId: string) {
   await requireProjectAccess(userId, projectId, "VIEWER");
   return projectRepository.findProjectById(projectId);
 }
 
-/**
- * Creates a project and makes the creator its OWNER in a single
- * transaction — a project must never exist without at least one member,
- * or it becomes permanently inaccessible (no one would pass
- * requireProjectAccess for it).
- */
 export async function createProject(userId: string, input: CreateProjectInput) {
   const baseSlug = slugify(input.name);
   const slug = await ensureUniqueSlug(baseSlug);
@@ -57,7 +52,6 @@ export async function createProject(userId: string, input: CreateProjectInput) {
   });
 }
 
-/** Appends a numeric suffix if the base slug is already taken, rather than failing the whole create. */
 async function ensureUniqueSlug(baseSlug: string): Promise<string> {
   let candidate = baseSlug || "project";
   let attempt = 1;
@@ -66,10 +60,59 @@ async function ensureUniqueSlug(baseSlug: string): Promise<string> {
     attempt += 1;
     candidate = `${baseSlug}-${attempt}`;
     if (attempt > 50) {
-      // Astronomically unlikely, but a hard ceiling beats an infinite loop.
       throw new ConflictError("Could not generate a unique project slug");
     }
   }
 
   return candidate;
+}
+
+export async function updateProject(userId: string, input: UpdateProjectInput) {
+  await requireProjectAccess(userId, input.projectId, "ADMIN");
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.project.update({
+      where: { id: input.projectId },
+      data: { name: input.name, description: input.description },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        actorId: userId,
+        action: "project.updated",
+        targetType: "Project",
+        targetId: input.projectId,
+        projectId: input.projectId,
+        metadata: { name: updated.name },
+      },
+    });
+
+    return updated;
+  });
+}
+
+export async function deleteProject(userId: string, projectId: string, confirmName: string) {
+  await requireProjectAccess(userId, projectId, "OWNER");
+
+  const project = await projectRepository.findProjectById(projectId);
+  if (!project) {
+    throw new NotFoundError("Project", projectId);
+  }
+  if (project.name !== confirmName) {
+    throw new ValidationError("Type the exact project name to confirm deletion.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.auditLog.create({
+      data: {
+        actorId: userId,
+        action: "project.deleted",
+        targetType: "Project",
+        targetId: projectId,
+        projectId: null,
+        metadata: { name: project.name },
+      },
+    });
+    await tx.project.delete({ where: { id: projectId } });
+  });
 }

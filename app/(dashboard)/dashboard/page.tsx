@@ -37,11 +37,11 @@ export default async function DashboardPage() {
         <div>
           <h2 className="font-display text-xl font-semibold tracking-tight">Overview</h2>
           <p className="text-sm text-muted-foreground">
-            Settings, users, and platform hardening arrive in the final phase.
+            The full roadmap is complete — every planned phase has shipped.
           </p>
         </div>
         <Badge variant="secondary" className="font-mono">
-          Phase 11 · AI QA Assistant
+          Phase 12 · Settings &amp; Hardening
         </Badge>
       </div>
 

@@ -100,6 +100,24 @@ export default async function ProjectDetailPage({
           >
             AI Assistant →
           </Link>
+          <Link
+            href={`/dashboard/projects/${project.id}/members`}
+            className="text-sm text-primary hover:underline"
+          >
+            Members →
+          </Link>
+          <Link
+            href={`/dashboard/projects/${project.id}/audit-logs`}
+            className="text-sm text-primary hover:underline"
+          >
+            Audit Logs →
+          </Link>
+          <Link
+            href={`/dashboard/projects/${project.id}/settings`}
+            className="text-sm text-primary hover:underline"
+          >
+            Settings →
+          </Link>
         </div>
       </div>
 

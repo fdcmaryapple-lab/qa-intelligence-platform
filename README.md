@@ -1,43 +1,93 @@
 # QA Intelligence Platform
 
-An AI-powered quality engineering workspace for QA engineers, developers, and
-engineering teams — requirement analysis, test case design, bug reporting,
-API testing, Playwright automation generation, regression tracking, and
-risk prediction in one place.
+An AI-powered quality engineering workspace — requirements, test cases, bug
+reports, API testing, Playwright automation (generation *and* real local
+execution), regression tracking, visual/screenshot diffing, deterministic
+risk scoring, QA analytics, a project-grounded AI assistant, and
+role-based project administration, all in one place.
 
-This is a portfolio-grade project built incrementally, phase by phase. See
-`ARCHITECTURE.md` (or the architecture doc shared alongside this repo) for
-the full system design and roadmap. **This README reflects Phase 1 —
-Foundation only.**
+This is a portfolio-grade project built incrementally across **13 phases**,
+each committed and CI-verified independently. See `ARCHITECTURE.md` (or the
+architecture doc shared alongside this repo) for the full system design.
+**This README reflects the completed roadmap, Phases 1–13.**
 
-## Features (Phase 1 scope)
+## Features
 
-- Landing, login, and register pages with client-side validated forms
-  (React Hook Form + Zod)
-- Dashboard shell with responsive sidebar navigation (desktop rail + mobile
-  drawer) and dark/light mode
-- Typed error handling and API response envelope shared by every route
-- Zod-validated environment configuration, fails fast on misconfiguration
-- Structured logging (pino)
-- Prisma schema foundation: `User`, `Project`, `ProjectMember`, `AuditLog`
-- Health-check endpoint (`/api/health`) that verifies DB connectivity
-- Vitest unit tests + Playwright E2E tests
-- Dockerized PostgreSQL for local development
+**Foundation & auth**
+- Landing, login, and register pages (React Hook Form + Zod)
+- Auth.js (Credentials provider, JWT sessions)
+- Dashboard shell — responsive sidebar (desktop rail + mobile drawer),
+  dark/light mode, project-context-aware navigation
+- Typed error hierarchy + shared API/action response envelopes
+- Zod-validated environment config, fails fast on misconfiguration
+- Structured logging (pino), Dockerized PostgreSQL, health-check endpoint
 
-> Authentication (Auth.js), AI features, and the remaining product modules
-> (requirements, test cases, automation, risk prediction, ...) are **not**
-> implemented yet — they arrive in later phases. Login/register forms
-> validate input but don't yet create real sessions.
+**Core QA workflow**
+- Projects with role-based membership (`VIEWER`/`EDITOR`/`ADMIN`/`OWNER`)
+- Requirements, linked test cases, linked bugs
+- AI-generated test cases (from a requirement) and bug reports (from a test
+  case + observed behavior) — Claude, forced tool-use, human review
+  workflow (`DRAFT` → `ACCEPTED`/`EDITED`/`REJECTED`)
+
+**API testing**
+- Saved, reusable API requests (any method, headers, query params, body)
+- Server-side execution (works regardless of target CORS; reaches
+  local/internal URLs) with an SSRF guard blocking cloud metadata
+  endpoints while deliberately allowing localhost/private IPs
+- Assertions (status/body/JSON-path) with pass/fail verdicts
+
+**Automation**
+- AI-generated or manually authored Playwright scripts, syntax-validated
+  via the TypeScript compiler API (parses only — never executes)
+- **Real local execution** (Phase 13): runs a saved script for real via a
+  `npx playwright test` child process on your machine, captures
+  exit code/stdout/stderr — genuine, unsandboxed code execution,
+  appropriate only because this is a single-user local dev tool (see
+  `server/automation/execute-script.ts` for the full reasoning);
+  gated at `ADMIN`, a stricter bar than generating/saving a script
+
+**Regression & visual testing**
+- Regression runs — a checklist of test cases checked against a build,
+  with PASS/FAIL/BLOCKED/SKIPPED recorded per test case
+- Screenshot comparison — upload a baseline PNG, diff candidate uploads
+  against it via real pixel-level comparison (`pixelmatch`/`pngjs`),
+  with a rendered diff image and configurable fail threshold
+
+**Insights**
+- Risk Prediction — a deterministic 0–100 score per requirement from real
+  signals (open bug severity, unreviewed test cases, regression failures).
+  Deliberately **not** AI-generated — an LLM-invented risk score would be
+  unverifiable in a tool people rely on; every point traces to real data
+  and the full breakdown is shown, not just the number
+- QA Reports — real charts (Recharts) over everything the app has
+  accumulated: test case/bug breakdowns, all-time regression results, API
+  execution outcomes, automation script validity
+- AI QA Assistant — project-scoped chat grounded in real project data.
+  Deliberately no tool-calling loop: each turn's system prompt is built
+  server-side from a deterministic summary (reusing the risk/reports
+  services), not from the model deciding what to query
+
+**Administration**
+- Project settings (rename/describe, `ADMIN`+) and deletion (type-to-confirm,
+  `OWNER` only)
+- Member management — add by email, change roles, remove members, with two
+  hardening guards: granting `OWNER` requires already being an `OWNER`
+  (no privilege escalation), and a project can never end up with zero
+  `OWNER`s (both demotion and removal of the last one are blocked)
+- Audit log viewer — every mutation across the whole app has written to
+  `AuditLog` since Phase 1; this is simply the first UI to show it
 
 ## Tech stack
 
 | Layer      | Choice                                                        |
 |------------|----------------------------------------------------------------|
-| Frontend   | Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui-style components, React Hook Form, Zod, Recharts (added when charts land) |
+| Frontend   | Next.js (App Router), TypeScript, Tailwind CSS, shadcn/ui-style components, React Hook Form, Zod, Recharts |
 | Backend    | Next.js API routes / server actions, TypeScript, Prisma ORM   |
 | Database   | PostgreSQL                                                     |
-| Auth       | Auth.js (arrives Phase 3)                                      |
-| AI         | Anthropic (Claude) API — live as of Phase 4 (test case generation)                                   |
+| Auth       | Auth.js (Credentials provider, JWT sessions)                   |
+| AI         | Anthropic Claude — forced tool-use for structured generation (test cases, bug reports, automation scripts), plain multi-turn chat for the AI Assistant |
+| Automation | Playwright (script generation, syntax validation, and real local execution) |
+| Image diff | pixelmatch + pngjs                                              |
 | Testing    | Vitest (unit/integration), Playwright (E2E)                   |
 | DevOps     | Docker, GitHub Actions                                         |
 
@@ -46,6 +96,8 @@ Foundation only.**
 - Node.js 20+
 - npm 10+
 - Docker (for local PostgreSQL) — or a PostgreSQL 16 instance you already have running
+- An Anthropic API key (console.anthropic.com/settings/keys) for AI features
+- (Optional, for Automation Runs) Playwright's Chromium browser: `npx playwright install chromium`
 
 ## Installation
 
@@ -79,14 +131,27 @@ All variables are documented in `.env.example` and validated at startup by
 `lib/env.ts` — the app refuses to start with a missing or malformed value
 instead of failing unpredictably later.
 
-| Variable              | Required in Phase 1 | Notes                                      |
+| Variable              | Required? | Notes                                      |
 |------------------------|:--------------------:|---------------------------------------------|
 | `NODE_ENV`             | auto-defaulted       | `development` \| `test` \| `production`     |
 | `DATABASE_URL`         | ✅                    | Postgres connection string                  |
 | `NEXT_PUBLIC_APP_URL`  | auto-defaulted       | Base URL of the running app                  |
 | `LOG_LEVEL`            | auto-defaulted       | `fatal`\|`error`\|`warn`\|`info`\|`debug`\|`trace` |
-| `AUTH_SECRET`          | not yet               | Required starting Phase 3 (Auth.js)          |
-| `ANTHROPIC_API_KEY`    | ✅                    | Required for AI test case generation. Get a key at console.anthropic.com/settings/keys — new accounts get a small trial credit without a card. Server-side only. |
+| `AUTH_SECRET`          | ✅                    | Required. Generate with `openssl rand -base64 32` |
+| `ANTHROPIC_API_KEY`    | ✅                    | Required for all AI features (test case/bug/automation generation, AI Assistant). Get a key at console.anthropic.com/settings/keys |
+
+> An earlier point in this project's history experimented with a
+> provider-agnostic AI layer (Ollama/OpenAI/Anthropic). That work was
+> fully reverted — the app is Anthropic-only, as reflected above.
+
+## Demo login
+
+After running `npm run db:seed`, you can sign in at `/login` with:
+
+- **Email:** `owner@example.com`
+- **Password:** `demo-password-123`
+
+(Development/CI only — never a real credential, just seeded so the sign-in flow is exercisable without manually registering first.)
 
 ## Database setup
 
@@ -125,23 +190,66 @@ npm run format         # Prettier, write mode
 
 ## Project structure
 
-```
-/app          Next.js App Router — routes, layouts, API route handlers
-/components   /ui = shadcn-style primitives, /shared = composed app components
-/features     Self-contained feature modules (UI + schemas + hooks + actions)
-/lib          Cross-cutting utilities (env, logger, errors, api-response)
-/server       Business logic: /db, /auth, /services, /repositories
-/prisma       Schema, migrations, seed script
-/types        Shared TypeScript types not owned by a single feature
-/hooks        App-wide React hooks
-/utils        Pure helper functions
-/tests        Vitest unit + integration tests
-/e2e          Playwright E2E specs
-/public       Static assets
-```
-
 Business logic lives in `/server/services`; route handlers and server
 actions stay thin (parse input, call a service, map errors to a response).
+
+## Architecture patterns
+
+A few conventions repeat across every feature — worth knowing before
+extending any of them:
+
+- **Layering**: `repository` (pure Prisma queries) → `service` (access
+  control + business logic + orchestration) → `feature action` (parse
+  input with Zod, call the service, map errors) → `page` (fetch via the
+  service, render). Pages never call Prisma directly.
+- **Access control**: `requireProjectAccess(userId, projectId, minRole)`
+  enforces a role hierarchy (`VIEWER` < `EDITOR` < `ADMIN` < `OWNER`).
+  Each service picks its own minimum — reading is usually `VIEWER`,
+  creating/editing content is usually `EDITOR`, and genuinely consequential
+  actions (project settings, member management, audit logs, **running**
+  an automation script) are `ADMIN` or `OWNER`.
+- **AI structured generation** (test cases, bug reports, automation
+  scripts): a Zod schema is converted to a tool `input_schema`
+  (`zod-to-json-schema`), the request forces that exact tool via
+  `tool_choice`, and the model's output is re-validated against the same
+  Zod schema before it ever touches the database. System prompts
+  explicitly frame user-supplied content as data, not instructions, as a
+  prompt-injection mitigation.
+- **Server action responses**: every action goes through
+  `withActionErrorHandling` + `parseOrThrow`, returning a consistent
+  `{ success: true, data }` / `{ success: false, error }` shape the UI
+  always handles the same way.
+- **Audit logging**: mutations write an `AuditLog` row (actor, action,
+  target, project, metadata); pure read views (Risk Prediction, QA
+  Reports) deliberately don't, since nothing changed.
+
+## Known, deliberately-scoped limitations
+
+Documented in code (mostly as section-header comments in
+`prisma/schema.prisma` and docblocks in the relevant service), not
+silently skipped:
+
+- **SSRF guard** (API testing): blocks cloud metadata endpoints by
+  hostname/IP literal, not full DNS-resolution verification — doesn't
+  defend against DNS rebinding. Fine for a single-user local tool.
+- **Automation script validation**: TypeScript syntax check only
+  (`ts.transpileModule`) — catches malformed code, not semantic/type
+  errors against `@playwright/test`'s actual API.
+- **Automation Runs execution**: genuine, unsandboxed code execution on
+  your local machine. Safe only because the person running a script and
+  the person who authored it are the same trust boundary — must not be
+  exposed to untrusted scripts, multiple users, or any hosted deployment
+  without real isolation (a fresh container per run, no network beyond
+  the target app, hard resource limits) first.
+- **Risk Prediction**: intentionally not AI-generated — a transparent
+  heuristic, not a black box.
+- **AI Assistant**: no tool-calling loop — grounded by a deterministic
+  context summary the app builds, not by the model deciding what to
+  query.
+- **Screenshot comparison**: user-uploaded images only, no live browser
+  screenshot capture (would mean navigating a headless browser to a
+  user-supplied URL server-side — real infrastructure and a heavier
+  version of the SSRF consideration above).
 
 ## Deployment
 

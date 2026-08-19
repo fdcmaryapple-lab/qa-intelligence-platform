@@ -88,6 +88,12 @@ export default async function ProjectDetailPage({
           >
             View risk →
           </Link>
+          <Link
+            href={`/dashboard/projects/${project.id}/reports`}
+            className="text-sm text-primary hover:underline"
+          >
+            View reports →
+          </Link>
         </div>
       </div>
 

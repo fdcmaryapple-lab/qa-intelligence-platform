@@ -82,6 +82,12 @@ export default async function ProjectDetailPage({
           >
             View screenshot diff →
           </Link>
+          <Link
+            href={`/dashboard/projects/${project.id}/risk`}
+            className="text-sm text-primary hover:underline"
+          >
+            View risk →
+          </Link>
         </div>
       </div>
 

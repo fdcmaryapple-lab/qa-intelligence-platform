@@ -37,11 +37,11 @@ export default async function DashboardPage() {
         <div>
           <h2 className="font-display text-xl font-semibold tracking-tight">Overview</h2>
           <p className="text-sm text-muted-foreground">
-            Risk prediction and QA reports arrive in later phases.
+            QA reports and analytics arrive in a later phase.
           </p>
         </div>
         <Badge variant="secondary" className="font-mono">
-          Phase 8 · Regression &amp; Screenshot Diff
+          Phase 9 · Risk Prediction
         </Badge>
       </div>
 

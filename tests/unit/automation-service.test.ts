@@ -1,15 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ForbiddenError, AiGenerationError } from "@/lib/errors";
+import { ForbiddenError, AiGenerationError, NotFoundError } from "@/lib/errors";
 import * as accessControl from "@/server/auth/access-control";
+import * as automationRepository from "@/server/repositories/automation-repository";
 import { prisma } from "@/server/db/prisma";
 import { getAnthropicClient } from "@/server/ai/client";
+import { executeAutomationScript } from "@/server/automation/execute-script";
 import {
   createAutomationScript,
   generateAutomationScriptFromTestCase,
+  runAutomationScript,
 } from "@/server/services/automation-service";
 
 vi.mock("@/server/auth/access-control");
 vi.mock("@/server/ai/client");
+vi.mock("@/server/automation/execute-script");
+vi.mock("@/server/repositories/automation-repository");
 vi.mock("@/server/db/prisma", () => ({
   prisma: {
     $transaction: vi.fn(),
@@ -173,5 +178,97 @@ describe("generateAutomationScriptFromTestCase", () => {
       }),
     );
     expect((result as { reviewStatus: string }).reviewStatus).toBe("DRAFT");
+  });
+});
+
+describe("runAutomationScript", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("throws NotFoundError when the script doesn't exist", async () => {
+    vi.mocked(automationRepository.findAutomationScriptById).mockResolvedValue(null);
+
+    await expect(runAutomationScript("user_1", "missing_id")).rejects.toThrow(NotFoundError);
+  });
+
+  it("requires at least ADMIN access on the project — a stricter bar than creating a script", async () => {
+    vi.mocked(automationRepository.findAutomationScriptById).mockResolvedValue({
+      id: "script_1",
+      projectId: "proj_1",
+      code: "test('x', async () => {});",
+    } as never);
+    vi.mocked(accessControl.requireProjectAccess).mockRejectedValue(new ForbiddenError());
+
+    await expect(runAutomationScript("user_1", "script_1")).rejects.toThrow(ForbiddenError);
+    expect(accessControl.requireProjectAccess).toHaveBeenCalledWith("user_1", "proj_1", "ADMIN");
+  });
+
+  it("never spawns a real process — executeAutomationScript is fully mocked, and persists whatever it returns", async () => {
+    vi.mocked(automationRepository.findAutomationScriptById).mockResolvedValue({
+      id: "script_1",
+      projectId: "proj_1",
+      code: "test('x', async () => {});",
+    } as never);
+    vi.mocked(accessControl.requireProjectAccess).mockResolvedValue({ role: "ADMIN" } as never);
+    vi.mocked(executeAutomationScript).mockResolvedValue({
+      status: "PASS",
+      exitCode: 0,
+      stdout: "1 passed",
+      stderr: "",
+      durationMs: 4200,
+    });
+
+    const tx = {
+      automationRun: {
+        create: vi.fn().mockImplementation(({ data }) => ({ id: "run_1", ...data })),
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+    };
+    vi.mocked(prisma.$transaction).mockImplementation(
+      // @ts-expect-error — simplified transaction signature for testing
+      async (fn: (tx: typeof tx) => unknown) => fn(tx),
+    );
+
+    const run = await runAutomationScript("user_1", "script_1");
+
+    expect(executeAutomationScript).toHaveBeenCalledWith("test('x', async () => {});");
+    expect(tx.automationRun.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: "PASS", exitCode: 0, durationMs: 4200 }),
+      }),
+    );
+    expect((run as { status: string }).status).toBe("PASS");
+  });
+
+  it("persists a FAIL/ERROR result from execution without throwing", async () => {
+    vi.mocked(automationRepository.findAutomationScriptById).mockResolvedValue({
+      id: "script_1",
+      projectId: "proj_1",
+      code: "test('x', async () => { throw new Error('boom'); });",
+    } as never);
+    vi.mocked(accessControl.requireProjectAccess).mockResolvedValue({ role: "ADMIN" } as never);
+    vi.mocked(executeAutomationScript).mockResolvedValue({
+      status: "FAIL",
+      exitCode: 1,
+      stdout: "",
+      stderr: "1 failed",
+      durationMs: 900,
+    });
+
+    const tx = {
+      automationRun: {
+        create: vi.fn().mockImplementation(({ data }) => ({ id: "run_1", ...data })),
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+    };
+    vi.mocked(prisma.$transaction).mockImplementation(
+      // @ts-expect-error — simplified transaction signature for testing
+      async (fn: (tx: typeof tx) => unknown) => fn(tx),
+    );
+
+    const run = await runAutomationScript("user_1", "script_1");
+
+    expect((run as { status: string }).status).toBe("FAIL");
   });
 });

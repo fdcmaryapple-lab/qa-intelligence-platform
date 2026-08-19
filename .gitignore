@@ -19,6 +19,9 @@
 /test-results
 /blob-report
 
+# ephemeral files written by the in-app automation-run executor —
+# always written then deleted per run, never meant to be committed
+/e2e/.generated-runs/
 # prisma
 /prisma/migrations/dev.db
 

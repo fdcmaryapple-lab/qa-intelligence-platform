@@ -23,3 +23,9 @@ export const updateAutomationReviewStatusSchema = z.object({
 });
 
 export type UpdateAutomationReviewStatusInput = z.infer<typeof updateAutomationReviewStatusSchema>;
+
+export const runAutomationScriptSchema = z.object({
+  scriptId: z.string().min(1),
+});
+
+export type RunAutomationScriptInput = z.infer<typeof runAutomationScriptSchema>;

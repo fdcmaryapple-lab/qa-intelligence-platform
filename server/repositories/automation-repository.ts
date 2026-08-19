@@ -7,6 +7,7 @@ export function findAutomationScriptsForProject(projectId: string) {
     include: {
       testCase: { select: { id: true, title: true } },
       createdBy: { select: { id: true, name: true, email: true } },
+      runs: { orderBy: { createdAt: "desc" }, take: 1 },
     },
   });
 }

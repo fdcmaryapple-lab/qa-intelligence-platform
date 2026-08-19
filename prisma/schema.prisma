@@ -1,3 +1,18 @@
+// QA Intelligence Platform — Prisma schema
+//
+// Phase 1 scope: only the identity/workspace core (User, Project,
+// ProjectMember) plus AuditLog, since audit logging hooks into every
+// later mutation. Requirement/TestCase/AI/etc. models arrive in their
+// respective phases per the roadmap — see the architecture doc for the
+// full intended ERD.
+//
+// Design notes:
+//  - IDs are cuid() strings: URL-safe, sortable-ish, no leaking sequential
+//    row counts the way auto-increment ints do.
+//  - Timestamps: createdAt/updatedAt on every mutable table.
+//  - Soft-delete is intentionally NOT used yet — deletions are hard until
+//    a real compliance/retention requirement justifies the complexity.
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,12 +22,14 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// A person who can sign in to the platform.
 model User {
   id            String   @id @default(cuid())
   email         String   @unique
   name          String?
   passwordHash  String?
   image         String?
+  /// Platform-wide role, independent of per-project roles (ProjectMember.role).
   platformRole  PlatformRole @default(MEMBER)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -33,6 +50,7 @@ model User {
   screenshotBaselines ScreenshotBaseline[]
   screenshotComparisons ScreenshotComparison[]
   aiChatThreads AiChatThread[]
+  automationRuns AutomationRun[]
 
   @@map("users")
 }
@@ -42,6 +60,8 @@ enum PlatformRole {
   PLATFORM_ADMIN
 }
 
+/// A QA workspace. All domain data (requirements, test cases, runs, ...)
+/// is scoped to a Project.
 model Project {
   id          String   @id @default(cuid())
   name        String
@@ -63,11 +83,15 @@ model Project {
   screenshotBaselines ScreenshotBaseline[]
   screenshotComparisons ScreenshotComparison[]
   aiChatThreads AiChatThread[]
+  automationRuns AutomationRun[]
 
   @@index([slug])
   @@map("projects")
 }
 
+/// Join table between User and Project, carrying the user's role within
+/// that specific project. This is the single source of truth authorization
+/// checks (requireProjectAccess) query against.
 model ProjectMember {
   id        String      @id @default(cuid())
   userId    String
@@ -90,12 +114,17 @@ enum ProjectRole {
   VIEWER
 }
 
+/// Append-only audit trail. `targetType`/`targetId` are a polymorphic
+/// reference (e.g. targetType="Requirement", targetId="<cuid>") rather than
+/// a foreign key per entity type, since this table must survive and remain
+/// queryable regardless of how many domain tables get added over time.
 model AuditLog {
   id         String   @id @default(cuid())
   actorId    String?
   action     String
   targetType String
   targetId   String
+  /// Structured before/after or metadata payload for this action.
   metadata   Json?
   projectId  String?
   createdAt  DateTime @default(now())
@@ -108,6 +137,8 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+/// A requirement belonging to a Project. TestCase (traced back to the
+/// requirement it covers) attaches here — see the TestCase model below.
 model Requirement {
   id          String              @id @default(cuid())
   projectId   String
@@ -141,6 +172,18 @@ enum RequirementPriority {
   CRITICAL
 }
 
+// ─────────────────────────────────────────────────────────────
+// Phase 3: Auth.js adapter tables.
+//
+// Shape is the standard one Auth.js's PrismaAdapter expects — see
+// https://authjs.dev/getting-started/adapters/prisma. Sessions currently
+// use the "jwt" strategy (see auth.ts for why — the originally planned
+// "database" strategy isn't supported alongside a Credentials provider),
+// so the Session table isn't actively written to right now, but the
+// adapter and its full standard schema stay in place for when an OAuth
+// provider gets added.
+// ─────────────────────────────────────────────────────────────
+
 model Account {
   id                String  @id @default(cuid())
   userId            String
@@ -172,6 +215,8 @@ model Session {
   @@map("sessions")
 }
 
+/// Used for email-verification / passwordless flows. Not exercised yet
+/// (credentials-only for now) but required by the adapter's schema shape.
 model VerificationToken {
   identifier String
   token      String   @unique
@@ -181,6 +226,20 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
+// ─────────────────────────────────────────────────────────────
+// Phase 4: Test Case Management + AI Test Generation.
+//
+// TestSuite/TestSuiteItem (grouping test cases into named suites) are
+// deliberately deferred — TestCase linking directly to Requirement is a
+// complete, useful unit on its own, and suites are a purely additive
+// layer on top later (a join table), not a schema change to this model.
+// ─────────────────────────────────────────────────────────────
+
+/// A single test case, optionally traced back to the requirement it
+/// covers. Can be authored manually or by AI (see aiGenerationId) — either
+/// way it starts as reviewStatus=DRAFT and a human decides what happens
+/// next. Never trust reviewStatus=DRAFT content as verified. Bug (Phase 5)
+/// can optionally trace back to the test case that surfaced it.
 model TestCase {
   id             String        @id @default(cuid())
   projectId      String
@@ -188,6 +247,10 @@ model TestCase {
   title          String
   description    String?
   preconditions  String?
+  /// Ordered list of step strings. A plain string array rather than a
+  /// separate TestStep table — steps are never queried/filtered
+  /// independently of their parent test case, so the relational overhead
+  /// wouldn't buy anything.
   steps          String[]
   expectedResult String?
   type           TestCaseType   @default(FUNCTIONAL)
@@ -220,6 +283,11 @@ enum TestCaseType {
   REGRESSION
 }
 
+/// Applies to any AI-originated content, not just TestCase — the same
+/// enum will be reused by RequirementAnalysis, Bug, etc. in later phases.
+/// DRAFT = untouched AI output. ACCEPTED = a human reviewed it as-is.
+/// EDITED = a human reviewed and changed it. REJECTED = a human reviewed
+/// and discarded it (kept for audit history, not deleted).
 enum ReviewStatus {
   DRAFT
   ACCEPTED
@@ -227,13 +295,21 @@ enum ReviewStatus {
   REJECTED
 }
 
+/// One row per AI API call. Every AI-generated artifact (TestCase now;
+/// RequirementAnalysis, Bug, AutomationScript, etc. later) links back
+/// here via a nullable aiGenerationId FK, rather than duplicating
+/// model/token/prompt-version columns on every one of those tables.
 model AiGeneration {
   id            String   @id @default(cuid())
+  /// What kind of thing this generation produced, e.g. "TestCase".
   targetType    String
   promptVersion String
   model         String
   inputTokens   Int?
   outputTokens  Int?
+  /// Full raw response, kept for debugging/audit — never re-parsed for
+  /// application logic, the parsed+validated fields live on the target
+  /// rows (e.g. TestCase) themselves.
   rawResponse   Json
   status        String
   createdById   String
@@ -250,6 +326,26 @@ model AiGeneration {
   @@map("ai_generations")
 }
 
+// ─────────────────────────────────────────────────────────────
+// Phase 5: Bug Reports.
+//
+// A Bug can trace back to the TestCase that surfaced it, but doesn't
+// require one — bugs can be filed standalone too. AI-assisted generation
+// works from a TestCase's expected behavior plus a human-supplied
+// description of what actually happened (see
+// server/ai/prompts/bug-report-generation.ts) — this project doesn't yet
+// have TestRun/TestResult models to generate directly from an automated
+// failure, so "from a failed result" per the original roadmap is
+// deliberately scoped down to this human-in-the-loop version for now.
+// ─────────────────────────────────────────────────────────────
+
+/// A bug report, optionally traced back to the test case that surfaced
+/// it. Can be authored manually or by AI (see aiGenerationId) — either
+/// way it starts as reviewStatus=DRAFT and a human decides what happens
+/// next, same pattern as TestCase. `status` tracks the bug's own
+/// lifecycle (open/in progress/resolved/...) independently of
+/// reviewStatus, which only tracks whether the AI-drafted content itself
+/// has been vetted.
 model Bug {
   id               String              @id @default(cuid())
   projectId        String
@@ -287,12 +383,44 @@ enum BugStatus {
   WONT_FIX
 }
 
+// ─────────────────────────────────────────────────────────────
+// Phase 6: API Testing Workspace.
+//
+// Requests are executed server-side (see server/http/execute-request.ts)
+// so they work regardless of the target API's CORS policy and can reach
+// internal/local URLs — the actual point of a QA tool testing your own
+// APIs. That does mean the server makes outbound requests to URLs the
+// user supplies, which is a real SSRF consideration in a multi-tenant
+// setting; server/http/ssrf-guard.ts blocks the one genuinely dangerous
+// class of target (cloud metadata endpoints) while deliberately still
+// allowing localhost/private IPs, since testing local dev APIs is core
+// to this feature. See that file's comments for exactly what is and
+// isn't covered — it is hostname/IP-literal checking, not full
+// DNS-resolution verification, so it does not defend against a
+// DNS-rebinding attack. Fine for a single-user local tool; would need
+// hardening before any multi-tenant deployment.
+//
+// Execution history is fully captured in ApiRequestExecution from day
+// one, even though the UI this phase only surfaces the most recent
+// result inline on each request's card — a dedicated history view is a
+// pure UI addition on top of data that already exists, not a schema
+// change, whenever that's worth building.
+// ─────────────────────────────────────────────────────────────
+
+/// A saved API request within a project — the reusable "test definition."
+/// Assertions (below) turn it from a one-off request into a repeatable
+/// pass/fail test; a request with zero assertions can still be run, it
+/// just has no automatic pass/fail verdict (status/response are still
+/// captured either way).
 model ApiRequest {
   id          String     @id @default(cuid())
   projectId   String
   name        String
   method      HttpMethod @default(GET)
   url         String
+  /// Key-value pairs, e.g. [{ "key": "Authorization", "value": "Bearer ..." }].
+  /// An array-of-objects shape (not a flat Json object) so duplicate
+  /// header names and explicit ordering are both preserved.
   headers     Json       @default("[]")
   queryParams Json       @default("[]")
   bodyType    ApiBodyType @default(NONE)
@@ -327,11 +455,19 @@ enum ApiBodyType {
   FORM
 }
 
+/// A single pass/fail check run against a request's response. Belongs to
+/// an ApiRequest (the reusable definition); results per-run are recorded
+/// in ApiRequestExecution.assertionResults, not here — this table is the
+/// checks themselves, not their outcomes.
 model ApiAssertion {
   id           String         @id @default(cuid())
   apiRequestId String
   type         AssertionType
+  /// Only used when type=JSON_PATH_EQUALS — a dot-path like "data.id".
   jsonPath     String?
+  /// The value being asserted, as a string in every case (status codes
+  /// are compared as strings too) — keeps this table's shape uniform
+  /// across assertion types rather than a nullable column per type.
   expected     String
   createdAt    DateTime       @default(now())
 
@@ -347,6 +483,10 @@ enum AssertionType {
   JSON_PATH_EQUALS
 }
 
+/// One row per actual run of an ApiRequest. Stores a snapshot of what was
+/// actually sent (requestSnapshot) rather than just referencing the
+/// parent ApiRequest, since the saved request can be edited later and a
+/// past execution should still reflect what was true when it ran.
 model ApiRequestExecution {
   id              String          @id @default(cuid())
   apiRequestId    String
@@ -355,9 +495,16 @@ model ApiRequestExecution {
   requestSnapshot Json
   responseStatus  Int?
   responseHeaders Json?
+  /// Capped at ~100KB in code (see server/http/execute-request.ts) — not
+  /// enforced at the schema level, since Postgres text columns don't have
+  /// a natural size cap worth adding here.
   responseBody    String?
   responseTruncated Boolean       @default(false)
   durationMs      Int?
+  /// Set only when the request itself couldn't complete (network error,
+  /// timeout, blocked by the SSRF guard) — distinct from a request that
+  /// completed with a non-2xx status, which is a normal, capturable
+  /// response, not an error.
   error           String?
   assertionResults Json?
   result          ExecutionResult
@@ -377,6 +524,39 @@ enum ExecutionResult {
   ERROR
 }
 
+// ─────────────────────────────────────────────────────────────
+// Phase 7: Playwright Automation Generator.
+//
+// Deliberately generate-and-save only, no server-side execution of the
+// generated script. Running AI-generated code is a materially different
+// (and much larger) risk than Phase 6's HTTP-request execution — it's
+// arbitrary code execution, not a bounded HTTP call an SSRF guard can
+// reasonably fence in. What this phase DOES do instead:
+//   1. AI generates a Playwright (@playwright/test) TypeScript script
+//      from a test case's steps/expected result.
+//   2. The script is syntax-checked via the TypeScript compiler API
+//      (server/automation/validate-script.ts) — this parses the code to
+//      find syntax errors WITHOUT ever executing it. transpileModule()
+//      only transpiles; it never runs the resulting JS.
+//   3. The user copies/downloads the script and runs it themselves via
+//      this project's own Playwright setup (npm run test:e2e).
+// Real server-side execution arrives in Phase 13 — see AutomationRun
+// below and server/automation/execute-script.ts for the full reasoning
+// on how that's scoped safely for a single-user local tool.
+//
+// Note on validation scope: transpileModule() catches SYNTAX errors
+// (malformed TypeScript) but not full semantic type errors — it doesn't
+// resolve @playwright/test's types, so a typo'd Playwright API call
+// (e.g. `page.clickk(...)`) won't be caught. Full semantic checking
+// would need a real ts.Program with node_modules type resolution — more
+// infrastructure than justified for a syntax sanity-check.
+// ─────────────────────────────────────────────────────────────
+
+/// An AI-generated or manually-written Playwright test script. Same
+/// review pattern as TestCase/Bug: AI-generated scripts start as DRAFT
+/// and a human decides what happens next; manually authored ones start
+/// ACCEPTED. `isValid`/`validationErrors` reflect the TypeScript syntax
+/// check only — see the note above on what that does and doesn't catch.
 model AutomationScript {
   id               String       @id @default(cuid())
   projectId        String
@@ -395,12 +575,38 @@ model AutomationScript {
   testCase     TestCase?     @relation(fields: [testCaseId], references: [id], onDelete: SetNull)
   createdBy    User          @relation(fields: [createdById], references: [id], onDelete: Restrict)
   aiGeneration AiGeneration? @relation(fields: [aiGenerationId], references: [id], onDelete: SetNull)
+  runs         AutomationRun[]
 
   @@index([projectId])
   @@index([testCaseId])
   @@map("automation_scripts")
 }
 
+// ─────────────────────────────────────────────────────────────
+// Phase 8: Regression Tracking + Screenshot Comparison.
+//
+// Regression tracking: a TestRun is a checklist snapshot — "these test
+// cases, checked against this build" — with a PASS/FAIL/BLOCKED/SKIPPED
+// result recorded per test case. No automatic execution; a human records
+// what they observed running the test manually or via the generated
+// automation script, same manual-recording model as the rest of this app.
+//
+// Screenshot comparison: deliberately user-uploaded images only, diffed
+// with pixelmatch — no live browser screenshot capture. Automatically
+// capturing a screenshot would mean navigating a headless browser to a
+// user-supplied URL server-side, which is real infrastructure (browser
+// lifecycle management, memory/CPU cost) and reopens the same class of
+// "server acts on an arbitrary URL" consideration as Phase 6's SSRF
+// guard, just for a heavier operation. Uploaded-image diffing delivers
+// the actual "did the UI change" value without any of that — a
+// legitimate future increment, not a gap in this one.
+// ─────────────────────────────────────────────────────────────
+
+/// A regression pass — a named checklist of test cases checked against a
+/// particular build/release, with a result recorded per test case in
+/// TestRunResult. `status` tracks whether the whole run is still being
+/// worked through or wrapped up; individual TestRunResult rows carry the
+/// actual pass/fail data.
 model TestRun {
   id          String        @id @default(cuid())
   projectId   String
@@ -423,6 +629,9 @@ enum TestRunStatus {
   COMPLETED
 }
 
+/// One row per test case included in a TestRun. Starts NOT_RUN; a human
+/// updates it as they work through the checklist. executedById/executedAt
+/// are null until the first time a result other than NOT_RUN is recorded.
 model TestRunResult {
   id           String              @id @default(cuid())
   testRunId    String
@@ -449,6 +658,10 @@ enum TestRunResultStatus {
   SKIPPED
 }
 
+/// A saved reference screenshot future uploads get diffed against.
+/// Stored as raw bytes (Postgres bytea) — no separate file storage
+/// service exists in this app yet, and screenshot-sized images are fine
+/// living in the DB at this scale.
 model ScreenshotBaseline {
   id          String   @id @default(cuid())
   projectId   String
@@ -467,6 +680,10 @@ model ScreenshotBaseline {
   @@map("screenshot_baselines")
 }
 
+/// One diff run of a candidate image against a baseline. diffImage is
+/// null when result=ERROR (e.g. dimensions didn't match — pixelmatch
+/// requires equal width/height, so a size mismatch is reported as an
+/// error rather than a forced/misleading diff).
 model ScreenshotComparison {
   id             String                     @id @default(cuid())
   baselineId     String
@@ -475,6 +692,7 @@ model ScreenshotComparison {
   diffImage      Bytes?
   diffPixelCount Int?
   diffPercentage Float?
+  /// Percentage of differing pixels above which the comparison is a FAIL.
   threshold      Float                      @default(1.0)
   result         ScreenshotComparisonResult
   error          String?
@@ -495,6 +713,22 @@ enum ScreenshotComparisonResult {
   ERROR
 }
 
+// ─────────────────────────────────────────────────────────────
+// Phase 11: AI QA Assistant.
+//
+// One ongoing chat thread per project, auto-created on the first
+// message sent (not on page load — listing messages never writes).
+// Deliberately no tool-calling loop: each turn's system prompt is built
+// server-side from a deterministic summary of the project's real data
+// (reusing risk-service and reports-service), not from the model
+// deciding what to query. This keeps data access fully under this
+// app's control rather than the model's, matching the same
+// controlled-scope spirit as every other AI feature here.
+// ─────────────────────────────────────────────────────────────
+
+/// One conversation per project. Auto-created the first time a message
+/// is sent for that project; there is no thread-list UI in this phase —
+/// one ongoing thread is the whole feature.
 model AiChatThread {
   id          String   @id @default(cuid())
   projectId   String
@@ -526,4 +760,45 @@ model AiChatMessage {
 enum ChatRole {
   USER
   ASSISTANT
+}
+
+// ─────────────────────────────────────────────────────────────
+// Phase 13: Automation Runs.
+//
+// Actually executes a saved AutomationScript, unlike Phase 7 which only
+// generated and validated (never ran) scripts. This is genuine,
+// unsandboxed code execution — see server/automation/execute-script.ts
+// for the full reasoning. In short: it's appropriate ONLY because this
+// is a single-user local dev tool, where the person running a script
+// and the person who authored it (themselves, or AI acting on their
+// explicit behalf) are the same trust boundary. This must not be
+// exposed to untrusted scripts, multiple users, or any hosted
+// deployment without adding real isolation first (a fresh container
+// per run, no network beyond the target app, hard resource limits).
+// ─────────────────────────────────────────────────────────────
+
+model AutomationRun {
+  id                 String              @id @default(cuid())
+  automationScriptId String
+  projectId          String
+  status             AutomationRunStatus
+  exitCode           Int?
+  stdout             String?
+  stderr             String?
+  durationMs         Int?
+  executedById       String
+  createdAt          DateTime            @default(now())
+
+  automationScript AutomationScript @relation(fields: [automationScriptId], references: [id], onDelete: Cascade)
+  project          Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  executedBy       User             @relation(fields: [executedById], references: [id], onDelete: Restrict)
+
+  @@index([automationScriptId, createdAt])
+  @@map("automation_runs")
+}
+
+enum AutomationRunStatus {
+  PASS
+  FAIL
+  ERROR
 }

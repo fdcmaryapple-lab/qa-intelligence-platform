@@ -9,6 +9,7 @@ import {
   createAutomationScriptSchema,
   generateAutomationScriptSchema,
   updateAutomationReviewStatusSchema,
+  runAutomationScriptSchema,
 } from "@/features/automation/schemas/automation-schemas";
 
 export async function createAutomationScriptAction(input: unknown) {
@@ -45,5 +46,15 @@ export async function updateAutomationReviewStatusAction(input: unknown) {
     );
     revalidatePath(`/dashboard/projects/${script.projectId}/automation`);
     return script;
+  });
+}
+
+export async function runAutomationScriptAction(input: unknown) {
+  return withActionErrorHandling(async () => {
+    const parsed = parseOrThrow(runAutomationScriptSchema, input);
+    const userId = await getCurrentUserId();
+    const run = await automationService.runAutomationScript(userId, parsed.scriptId);
+    revalidatePath("/dashboard", "layout");
+    return run;
   });
 }

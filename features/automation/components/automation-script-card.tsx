@@ -1,10 +1,31 @@
 "use client";
 
 import * as React from "react";
-import { Sparkles, Copy, Check, Download, CheckCircle2, AlertTriangle } from "lucide-react";
+import {
+  Sparkles,
+  Copy,
+  Check,
+  Download,
+  CheckCircle2,
+  AlertTriangle,
+  Play,
+  Loader2,
+  XCircle,
+} from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { AutomationReviewStatusActions } from "@/features/automation/components/automation-review-status-actions";
+import { runAutomationScriptAction } from "@/features/automation/actions";
+
+type RunItem = {
+  id: string;
+  status: "PASS" | "FAIL" | "ERROR";
+  exitCode: number | null;
+  stdout: string | null;
+  stderr: string | null;
+  durationMs: number | null;
+};
 
 export type AutomationScriptCardItem = {
   id: string;
@@ -15,6 +36,7 @@ export type AutomationScriptCardItem = {
   validationErrors: string | null;
   aiGenerationId: string | null;
   testCase: { id: string; title: string } | null;
+  runs: RunItem[];
 };
 
 const reviewStatusVariant = {
@@ -23,6 +45,8 @@ const reviewStatusVariant = {
   EDITED: "secondary",
   REJECTED: "fail",
 } as const;
+
+const runStatusVariant = { PASS: "pass", FAIL: "fail", ERROR: "fail" } as const;
 
 function slugify(title: string): string {
   return (
@@ -35,6 +59,9 @@ function slugify(title: string): string {
 
 export function AutomationScriptCard({ script }: { script: AutomationScriptCardItem }) {
   const [copied, setCopied] = React.useState(false);
+  const [running, setRunning] = React.useState(false);
+  const [runError, setRunError] = React.useState<string | null>(null);
+  const [latestRun, setLatestRun] = React.useState<RunItem | null>(script.runs[0] ?? null);
 
   async function handleCopy() {
     await navigator.clipboard.writeText(script.code);
@@ -52,6 +79,21 @@ export function AutomationScriptCard({ script }: { script: AutomationScriptCardI
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  async function handleRun() {
+    setRunning(true);
+    setRunError(null);
+
+    const result = await runAutomationScriptAction({ scriptId: script.id });
+
+    setRunning(false);
+    if (!result.success) {
+      setRunError(result.error.message);
+      return;
+    }
+
+    setLatestRun(result.data);
   }
 
   return (
@@ -114,7 +156,62 @@ export function AutomationScriptCard({ script }: { script: AutomationScriptCardI
             <Download className="h-3 w-3" />
             Download .spec.ts
           </button>
+          <Button size="sm" variant="outline" onClick={handleRun} disabled={running}>
+            {running ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Play className="h-3.5 w-3.5" />
+            )}
+            Run
+          </Button>
         </div>
+        <p className="text-[11px] text-muted-foreground">
+          Runs for real on this machine via Playwright — make sure the app is running first.
+        </p>
+
+        {runError ? <p className="text-xs text-destructive">{runError}</p> : null}
+
+        {latestRun ? (
+          <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={runStatusVariant[latestRun.status]}>
+                {latestRun.status === "PASS" ? (
+                  <CheckCircle2 className="h-3 w-3" />
+                ) : (
+                  <XCircle className="h-3 w-3" />
+                )}
+                {latestRun.status}
+              </Badge>
+              {latestRun.exitCode !== null ? (
+                <span className="font-mono text-xs text-muted-foreground">
+                  exit {latestRun.exitCode}
+                </span>
+              ) : null}
+              {latestRun.durationMs !== null ? (
+                <span className="font-mono text-xs text-muted-foreground">
+                  {latestRun.durationMs}ms
+                </span>
+              ) : null}
+            </div>
+
+            {latestRun.stdout ? (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground">stdout</summary>
+                <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-background p-2 font-mono">
+                  {latestRun.stdout}
+                </pre>
+              </details>
+            ) : null}
+            {latestRun.stderr ? (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground">stderr</summary>
+                <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded bg-background p-2 font-mono text-destructive">
+                  {latestRun.stderr}
+                </pre>
+              </details>
+            ) : null}
+          </div>
+        ) : null}
 
         {script.reviewStatus === "DRAFT" ? (
           <div className="pt-1">

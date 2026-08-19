@@ -9,6 +9,7 @@ import {
   AUTOMATION_SCRIPT_GENERATION_PROMPT_VERSION,
 } from "@/server/ai/prompts/automation-script-generation";
 import { validateScriptSyntax } from "@/server/automation/validate-script";
+import { executeAutomationScript } from "@/server/automation/execute-script";
 import { AiGenerationError, NotFoundError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import type { CreateAutomationScriptInput } from "@/features/automation/schemas/automation-schemas";
@@ -197,5 +198,44 @@ export async function generateAutomationScriptFromTestCase(userId: string, testC
     });
 
     return script;
+  });
+}
+
+export async function runAutomationScript(userId: string, scriptId: string) {
+  const script = await automationRepository.findAutomationScriptById(scriptId);
+  if (!script) {
+    throw new NotFoundError("AutomationScript", scriptId);
+  }
+
+  await requireProjectAccess(userId, script.projectId, "ADMIN");
+
+  const result = await executeAutomationScript(script.code);
+
+  return prisma.$transaction(async (tx) => {
+    const run = await tx.automationRun.create({
+      data: {
+        automationScriptId: script.id,
+        projectId: script.projectId,
+        status: result.status,
+        exitCode: result.exitCode,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        durationMs: result.durationMs,
+        executedById: userId,
+      },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        actorId: userId,
+        action: "automation_script.run",
+        targetType: "AutomationScript",
+        targetId: script.id,
+        projectId: script.projectId,
+        metadata: { runId: run.id, status: result.status, exitCode: result.exitCode },
+      },
+    });
+
+    return run;
   });
 }
